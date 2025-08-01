@@ -1,0 +1,7 @@
+{
+  "files.associations": {
+    "*.yaml": "ansible",
+    "*.yml": "ansible"
+  },
+  "ansible.python.interpreterPath": "/home/acarlos/Dropbox/RedHat/Ansible/facts-to-mongodb/python-3.9-ansible-2.14/bin/python"
+}

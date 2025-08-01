@@ -1,0 +1,42 @@
+- name: Extract infos from Tomcat
+  ansible.builtin.shell: |
+    TOMCAT_VERSION='unknown'
+    if [ -f "{{ item.home }}/RELEASE-NOTES" ]; then
+      TOMCAT_VERSION="$(grep -i "Apache Tomcat Version" "{{ item.home }}/RELEASE-NOTES")"
+    elif [ -f "{{ item.home }}/version.txt" ]; then
+      TOMCAT_VERSION="$(cat "{{ item.home }}/version.txt")"
+    elif [ -f "{{ item.home }}/lib/catalina.jar" ]; then
+      TOMCAT_VERSION="$(unzip -p "{{ item.home }}/lib/catalina.jar" META-INF/MANIFEST.MF | grep Specification-Version)"
+    fi
+    echo "{
+      \"pid\":\"{{ item.pid }}\",
+      \"version\": \"$TOMCAT_VERSION\"
+    }"
+  loop: "{{ java_processes_raw }}"
+  when: item.type == 'tomcat'
+  register: tomcat_info_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create Tomcat infos
+  ansible.builtin.set_fact:
+    tomcat: "{{ tomcat + [ item.stdout | from_json ] }}"
+  loop: "{{ tomcat_info_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug tomcat
+  ansible.builtin.debug:
+    var: tomcat
+  when: debug
+
+- name: Build version dicts by pid
+  ansible.builtin.set_fact:
+    tomcat_map: "{{ dict(tomcat | map(attribute='pid') | zip(tomcat)) }}"
+  no_log: "{{ not log }}"
+
+- name: Debug tomcat_map
+  ansible.builtin.debug:
+    var: tomcat_map
+  when: debug

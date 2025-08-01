@@ -2,3 +2,7 @@ cpython-3.9.23-linux-x86_64-gnu
 mongodbdata
 python-3.9-ansible-2.14
 playbooks/test
+playbooks/.lh
+playbooks/.ansible
+playbooks/.temp
+playbooks/.lock

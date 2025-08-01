@@ -1,0 +1,25 @@
+- name: Extract version from JAR
+  ansible.builtin.shell: >
+    JAR_VERSION="$(unzip -p "{{ item.jar_file }}" META-INF/MANIFEST.MF | grep -Ei 'Implementation-Version' || echo "unknown")"
+    echo "{
+      \"pid\":\"{{ item.pid }}\",
+      \"version\": \"$JAR_VERSION\"
+    }"
+  loop: "{{ java_processes_raw }}"
+  when: item.type not in ['tomcat', 'jboss'] and item.jar_file is defined and item.jar_file != 'unknown'
+  register: jar_info_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create JAR infos
+  ansible.builtin.set_fact:
+    jar: "{{ jar + [ item.stdout | from_json ] }}"
+  loop: "{{ jar_info_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug jar
+  ansible.builtin.debug:
+    var: jar
+  when: debug

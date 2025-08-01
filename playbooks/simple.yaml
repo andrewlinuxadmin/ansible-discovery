@@ -1,0 +1,14 @@
+- name: Get Facts
+  hosts: all
+  gather_facts: true
+  become: true
+  tasks:
+    - name: Coletar lista de pacotes instalados
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Coletar estado dos serviços
+      ansible.builtin.service_facts: {}
+
+    - name: Coletar portas TCP/UDP ativas
+      community.general.listen_ports_facts: {}

@@ -1,0 +1,6 @@
+p1gen4.acarlos.redhat.com ansible_user=root
+bastion.acarlos.tamlab.rdu2.redhat.com ansible_user=root
+dell-per630-4.gsslab.rdu2.redhat.com ansible_user=root
+
+[all:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
