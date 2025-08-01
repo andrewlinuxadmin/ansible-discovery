@@ -4,3 +4,4 @@ test
 .ansible
 .temp
 .lock
+inventory

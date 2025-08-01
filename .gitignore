@@ -7,3 +7,4 @@ playbooks/.lh
 playbooks/.ansible
 playbooks/.temp
 playbooks/.lock
+playbooks/inventory
