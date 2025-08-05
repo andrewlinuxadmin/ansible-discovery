@@ -22,7 +22,7 @@ PHP:
 Httpd:
   - Criar um exemplo com virtualhost
 
-Ngnix:
+Nginx:
   - Criar um exemplo com virtualhost
 
 Docker:
