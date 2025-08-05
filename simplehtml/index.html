@@ -1,0 +1,231 @@
+<html>
+<head>
+  <title>Jinja2 Web Evaluator</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- CodeMirror CSS & Themes -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/eclipse.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/dracula.min.css">
+  <!-- jQuery -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <!-- Popper and Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+  <!-- CodeMirror JS and modes -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/jinja2/jinja2.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/xml/xml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/yaml/yaml.min.js"></script>
+  <style>
+    /* Light/Dark Theme Styles */
+    body.dark-mode { background-color: #1e1e1e; color: #ccc; }
+    .card.dark-mode { background-color: #2e2e2e; color: #ddd; }
+    /* Override Bootstrap light backgrounds in dark mode */
+    body.dark-mode .bg-light { background-color: #444 !important; color: #eee !important; }
+    /* Inputs, selects, buttons in dark mode */
+    body.dark-mode .form-control,
+    body.dark-mode .form-select { background-color: #333; color: #eee; border-color: #555; }
+    body.dark-mode .btn { background-color: #555; color: #eee; border-color: #666; }
+    /* Modal in dark mode */
+    body.dark-mode .modal-content { background-color: #2e2e2e; color: #ddd; }
+    body.dark-mode .modal-header,
+    body.dark-mode .modal-footer { border-color: #555; }
+    body.dark-mode .btn-close { filter: invert(1); }
+    /* CodeMirror styling */
+    .CodeMirror { border: 1px solid #ccc; height: auto; min-height: 150px; resize: vertical; overflow: auto; font-family: monospace; font-size: 14px; }
+    body.dark-mode .CodeMirror { border: 1px solid #555; }
+    /* Notes */
+    .note { font-style: italic; font-size: 14px; color: #555; margin-bottom: 10px; }
+    body.dark-mode .note { color: #aaa; }
+    #result-type { padding-top: 0; border-top: 0; }
+    /* Top controls container */
+    #top-controls { position: absolute; top: 20px; right: 20px; z-index: 1050; }
+    /* Highlight result-type in dark mode */
+    body.dark-mode #result-type { color: #ccc !important; }
+  </style>
+</head>
+<body>
+  <!-- Top controls: Settings only -->
+  <div id="top-controls">
+    <button id="settings-toggle" class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#settingsModal">Settings</button>
+  </div>
+
+  <div class="container-fluid my-4">
+    <h1 class="mb-4 text-center">Jinja2 Web Evaluate <small id="version" class="text-muted">v1.1</small></h1>
+
+    <!-- JSON Input Card -->
+    <div class="card mb-4" style="width: 90%; margin: auto;">
+      <div class="card-body">
+        <h2 class="card-title bg-light p-2">JSON Input</h2>
+        <form id="upload-form" enctype="multipart/form-data" class="mb-3">
+          <div class="input-group">
+            <input type="file" class="form-control" id="jsonfile" name="jsonfile">
+            <button class="btn btn-primary" type="submit">Load JSON</button>
+          </div>
+        </form>
+        <div class="mb-2">
+          <select id="input-mode" class="form-select w-auto">
+            <option value="application/json">JSON</option>
+            <option value="text/x-yaml">YAML</option>
+          </select>
+        </div>
+        <textarea id="inputcode"></textarea>
+        <div id="history-list"></div>
+      </div>
+    </div>
+
+    <!-- Jinja Expression Card -->
+    <div class="card mb-4" style="width: 90%; margin: auto;">
+      <div class="card-body">
+        <h2 class="card-title bg-light p-2">Jinja Expression</h2>
+        <div class="note">The variable <strong><code>data</code></strong> contains the full JSON input.</div>
+        <textarea id="jinjaexpr"></textarea>
+      </div>
+    </div>
+
+    <!-- Result Card -->
+    <div class="card mb-4" style="width: 90%; margin: auto;">
+      <div class="card-body">
+        <h2 class="card-title bg-light p-2">Result <small id="result-type" class="text-muted"></small></h2>
+        <div class="mb-2">
+          <select id="result-mode" class="form-select w-auto">
+            <option value="application/json">JSON</option>
+            <option value="text/plain">Plain text</option>
+            <option value="text/x-yaml">YAML</option>
+            <option value="application/xml">XML</option>
+          </select>
+        </div>
+        <textarea id="resultview" readonly></textarea>
+      </div>
+    </div>
+  </div>
+  <div style="height:500px;"></div>
+
+  <!-- Settings Modal -->
+  <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="settingsModalLabel">Settings</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <!-- Theme Selection -->
+          <div class="mb-3">
+            <label for="theme-select" class="form-label">Editor Theme</label>
+            <select id="theme-select" class="form-select">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+          <!-- Editor Height Settings -->
+          <div class="mb-3">
+            <label for="height-inputcode" class="form-label">JSON Editor Height (px)</label>
+            <input type="number" class="form-control" id="height-inputcode">
+          </div>
+          <div class="mb-3">
+            <label for="height-jinjaexpr" class="form-label">Jinja Editor Height (px)</label>
+            <input type="number" class="form-control" id="height-jinjaexpr">
+          </div>
+          <div class="mb-3">
+            <label for="height-resultview" class="form-label">Result Editor Height (px)</label>
+            <input type="number" class="form-control" id="height-resultview">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="reset-heights" class="btn btn-warning">Reset Heights</button>
+          <button type="button" id="save-settings" class="btn btn-primary">Save</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let inputEditor, jinjaEditor, resultEditor;
+    const themes = { light: 'eclipse', dark: 'dracula' };
+    let currentTheme = localStorage.getItem('cmTheme') || 'dark';
+
+    function applyTheme(theme) {
+      document.body.classList.toggle('dark-mode', theme === 'dark');
+      $('.card').toggleClass('dark-mode', theme === 'dark');
+      $('.modal-content').toggleClass('dark-mode', theme === 'dark');
+      inputEditor.setOption('theme', themes[theme]);
+      jinjaEditor.setOption('theme', themes[theme]);
+      resultEditor.setOption('theme', themes[theme]);
+      localStorage.setItem('cmTheme', theme);
+    }
+
+    function applyHeights() {
+      const h1 = localStorage.getItem('height-inputcode');
+      const h2 = localStorage.getItem('height-jinjaexpr');
+      const h3 = localStorage.getItem('height-resultview');
+      if (h1) inputEditor.setSize('100%', parseInt(h1));
+      if (h2) jinjaEditor.setSize('100%', parseInt(h2));
+      if (h3) resultEditor.setSize('100%', parseInt(h3));
+    }
+
+    $(function() {
+      // Initialize editors
+      inputEditor = CodeMirror.fromTextArea(document.getElementById("inputcode"), {
+        mode: "application/json", lineNumbers: true, lineWrapping: true,
+        indentWithTabs: false, tabSize: 2, theme: themes[currentTheme]
+      });
+      jinjaEditor = CodeMirror.fromTextArea(document.getElementById("jinjaexpr"), {
+        mode: "jinja2", lineNumbers: true, lineWrapping: true,
+        indentWithTabs: false, tabSize: 2, theme: themes[currentTheme]
+      });
+      resultEditor = CodeMirror.fromTextArea(document.getElementById("resultview"), {
+        mode: "application/json", lineNumbers: true, readOnly: true,
+        lineWrapping: true, indentWithTabs: false, tabSize: 2, theme: themes[currentTheme]
+      });
+      // Default sizes
+      inputEditor.setSize("100%", 100);
+      jinjaEditor.setSize("100%", 100);
+      resultEditor.setSize("100%", 1000);
+
+      applyTheme(currentTheme);
+      applyHeights();
+
+      // Settings modal handlers
+      $('#settingsModal').on('show.bs.modal', function() {
+        $('#theme-select').val(currentTheme);
+        $('#height-inputcode').val(localStorage.getItem('height-inputcode') || 100);
+        $('#height-jinjaexpr').val(localStorage.getItem('height-jinjaexpr') || 100);
+        $('#height-resultview').val(localStorage.getItem('height-resultview') || 1000);
+      });
+      $('#save-settings').on('click', function() {
+        const selTheme = $('#theme-select').val();
+        currentTheme = selTheme;
+        applyTheme(currentTheme);
+        localStorage.setItem('cmTheme', selTheme);
+        localStorage.setItem('height-inputcode', $('#height-inputcode').val());
+        localStorage.setItem('height-jinjaexpr', $('#height-jinjaexpr').val());
+        localStorage.setItem('height-resultview', $('#height-resultview').val());
+        applyHeights();
+        $('#settingsModal').modal('hide');
+      });
+      $('#reset-heights').on('click', function() {
+        localStorage.removeItem('height-inputcode');
+        localStorage.removeItem('height-jinjaexpr');
+        localStorage.removeItem('height-resultview');
+        inputEditor.setSize("100%", 100);
+        jinjaEditor.setSize("100%", 100);
+        resultEditor.setSize("100%", 1000);
+      });
+
+      // Other existing handlers
+      $('#input-mode').on('change', function() { inputEditor.setOption('mode', $(this).val()); });
+      $('#upload-form').on('submit', function(e) { e.preventDefault(); var file = $('#jsonfile')[0].files[0]; var reader = new FileReader(); reader.onload = function(e) { const content = e.target.result; inputEditor.setValue(content); jinjaEditor.setValue(jinjaEditor.getValue()); updateHistory(file.name, content); }; if (file) reader.readAsText(file); });
+      $('#history-list').on('click', 'button', function() { const idx = $(this).data('index'); const hist = JSON.parse(localStorage.getItem('jsonHistory') || '[]'); if (hist[idx]) { inputEditor.setValue(hist[idx].content); jinjaEditor.setValue(jinjaEditor.getValue()); } });
+      function updateHistory(fileName, content) { let history = JSON.parse(localStorage.getItem('jsonHistory') || '[]'); history.unshift({name: fileName, content: content}); history = history.slice(0, 3); localStorage.setItem('jsonHistory', JSON.stringify(history)); renderHistory(); }
+      function renderHistory() { let history = JSON.parse(localStorage.getItem('jsonHistory') || '[]'); const container = $('#history-list'); container.html('<strong>Recent Files:</strong><br/>'); history.forEach((item, index) => { container.append(`<button class="btn btn-outline-secondary btn-sm me-1 mb-1" data-index="${index}">${item.name}</button>`); }); }
+      $('#result-mode').on('change', function() { resultEditor.setOption('mode', $(this).val()); });
+      function sendRender() { $.post('/render',{ json: inputEditor.getValue(), expr: jinjaEditor.getValue() }, function(data,status,xhr){ const rt=xhr.getResponseHeader('X-Result-Type')||'string'; $('#result-type').text(`(${rt})`); try{ const p=JSON.parse(data); resultEditor.setValue(JSON.stringify(p,null,2)); localStorage.setItem('lastExpr',jinjaEditor.getValue()); }catch(e){ resultEditor.setValue(data);} }).fail(function(xhr){ resultEditor.setValue('Error: '+xhr.responseText); $('#result-type').text('(error)');}); }
+      renderHistory(); sendRender();
+    });
+  </script>
+</body>
+</html>

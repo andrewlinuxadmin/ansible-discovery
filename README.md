@@ -18,10 +18,7 @@ Ansible playbook for performing process discovery on Linux servers
 5) Install python packages:<br/>
 `pip install -r pip-venv-requirements.txt`
 
-6) Install python packages:<br/>
-`pip install -r pip-venv-requirements.txt`
-
-7) Install Ansible Collections:<br/>
+6) Install Ansible Collections:<br/>
 `cd ./ansible-discovery/playbooks`<br/>
 `mkdir collections`<br/>
 `ansible-galaxy collection install -r galaxy-requirements.yaml`
@@ -30,7 +27,7 @@ Ansible playbook for performing process discovery on Linux servers
 Required VSCode Extensions
 
 - https://marketplace.visualstudio.com/items?itemName=redhat.ansible
-- https://marketplace.visualstudio.com/items?itemName=redhat.ansible
+- https://marketplace.visualstudio.com/items?itemName=samuelcolvin.jinjahtml
 
 With virtualenv activated, and inside the playbooks folder, open VSCode::<br/>
 `code .`
