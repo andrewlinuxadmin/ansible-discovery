@@ -179,7 +179,7 @@ class JinjaHandler(BaseHTTPRequestHandler):
           indentWithTabs: false,
           tabSize: 2
         });
-        resultEditor.setSize("90 %", 1000);
+        resultEditor.setSize("90%", 1000);
 
         function sendRender() {
           $.post('/render', {
