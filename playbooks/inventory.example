@@ -1,0 +1,15 @@
+[webservers]
+web01 ansible_host=192.168.1.10 ansible_user=admin
+web02 ansible_host=192.168.1.11 ansible_user=admin
+
+[appservers]
+app01 ansible_host=192.168.1.20 ansible_user=admin
+app02 ansible_host=192.168.1.21 ansible_user=admin
+
+[databases]
+db01 ansible_host=192.168.1.30 ansible_user=admin
+
+[all:vars]
+ansible_ssh_private_key_file=~/.ssh/id_rsa
+ansible_become=true
+ansible_become_method=sudo
