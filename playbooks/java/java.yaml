@@ -1,0 +1,200 @@
+- name: Classify Java processes and build structured list
+  ansible.builtin.set_fact:
+    java_processes_raw: >-
+      {{
+        java_processes_raw | default([]) +
+        [{
+          'cmd': item.args,
+          'pid': item.pid,
+          'process_user': item.user,
+          'process_user_homedir': item.homedir,
+          'type': app_type,
+          'java_bin': java_bin,
+          'home': app_home,
+          'jar_file': jar_file
+        }]
+      }}
+  vars:
+    java_bin: "{{ (item.args.split())[0] }}"
+    is_tomcat: "{{ 'catalina' in item.args or 'tomcat' in item.args }}"
+    is_jboss: "{{ 'jboss' in item.args or 'wildfly' in item.args }}"
+    is_jar: "{{ '.jar' in item.args }}"
+    app_type: >-
+      {{
+        'tomcat' if is_tomcat else
+        'jboss' if is_jboss else
+        'springboot' if 'spring' in item.args else
+        'quarkus' if 'quarkus' in item.args else
+        'java-app'
+      }}
+    tomcat_home_match: "{{ item.args | regex_search('-Dcatalina\\.home[= ]([^ ]+)', '\\1') | default([]) }}"
+    jboss_home_match: "{{ item.args | regex_search('-Djboss\\.home\\.dir[= ]([^ ]+)', '\\1') | default([]) }}"
+    app_home: >-
+      {{
+        tomcat_home_match[0] if is_tomcat and tomcat_home_match | length > 0 else
+        jboss_home_match[0] if is_jboss and jboss_home_match | length > 0 else
+        'unknown'
+      }}
+    jar_file_match: "{{ item.args | regex_search('(?:-jar\\s+)?([^ ]+\\.jar)', '\\1') | default([]) }}"
+    jar_file: >-
+      {{
+        jar_file_match[0] if is_jar and jar_file_match | length > 0 else
+        'unknown'
+        }}
+  loop: "{{ processes | selectattr('command', 'search', 'java') | list }}"
+  no_log: "{{ not log }}"
+
+- name: Debug java_processes_raw
+  ansible.builtin.debug:
+    var: java_processes_raw
+  when: debug
+
+- name: Initialize has_*_processes
+  ansible.builtin.set_fact:
+    cacheable: true
+    has_tomcat_processes: false
+    has_jboss_processes: false
+    has_jar_processes: false
+
+- name: Set has_tomcat_processes
+  ansible.builtin.set_fact:
+    cacheable: true
+    has_tomcat_processes: true
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  when: item.type == 'tomcat'
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Set has_jboss_processes
+  ansible.builtin.set_fact:
+    cacheable: true
+    has_jboss_processes: true
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  when: item.type == 'jboss'
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Set has_jar_processes
+  ansible.builtin.set_fact:
+    cacheable: true
+    has_jar_processes: true
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  when: item.type == 'java-app'
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Get Java version for each instance
+  ansible.builtin.shell: |
+    set -o pipefail
+    JAVA_VERSION=$({{ item.java_bin }} -version 2>&1 | grep version | sed -E 's/.*"([^"]+)".*/\1/' || echo unknown)
+    echo "{\"{{ item.pid }}\": \"$JAVA_VERSION\"}"
+  loop: "{{ java_processes_raw }}"
+  register: java_versions_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Initialize java_versions
+  ansible.builtin.set_fact:
+    java_versions: {}
+
+- name: Build list of Java version dictionaries
+  ansible.builtin.set_fact:
+    java_versions: "{{ java_versions | combine(item.stdout | from_json) }}"
+  loop: "{{ java_versions_shell.results }}"
+  no_log: "{{ not log }}"
+
+- name: Debug java_versions
+  ansible.builtin.debug:
+    var: java_versions
+  when: debug
+
+# ------------------------- TOMCAT -------------------------
+
+- name: Collects information from Tomcat processes
+  ansible.builtin.import_tasks:
+    file: tomcat.yaml
+  when: has_tomcat_processes
+  tags: tomcat
+
+# ------------------------- JBOSS -------------------------
+
+- name: Collects information from JBoss processes
+  ansible.builtin.import_tasks:
+    file: jboss.yaml
+  when: has_jboss_processes
+  tags: jboss
+
+# ------------------------- JAR -------------------------
+
+- name: Collects information from jar processes
+  ansible.builtin.import_tasks:
+    file: jar.yaml
+  when: has_jar_processes
+  tags: jar
+
+# ------------------------- CONSOLIDATE -------------------------
+
+- name: Initialize java_processes
+  ansible.builtin.set_fact:
+    cacheable: true
+    java_processes: []
+
+- name: Merge all Java instance data
+  ansible.builtin.set_fact:
+    cacheable: true
+    java_processes: >-
+      {{
+        java_processes | default([]) +
+        [{
+          'pid': item.pid,
+          'type': item.type,
+          'java_bin': item.java_bin,
+          'home': item.home,
+          'jar_file': item.jar_file,
+          'java_version': java_versions[item.pid],
+          'tomcat_info': ({
+            'version': tomcat_versions[item.pid].version | default('unknown'),
+            'tomcat_manager': {
+              'username': tomcat_users[item.pid].username | default('unknown'),
+              'password': tomcat_users[item.pid].password | default('unknown'),
+              'roles': tomcat_users[item.pid].roles | default('[]'),
+              'address': tomcat_manager_address[item.pid] | default('unknown')
+            },
+            'deployments': tomcat_deployments[item.pid] | default({})
+          }) if item.type == 'tomcat' else omit,
+          'jboss_info': ({
+            'mode': jboss[item.pid].mode | default('unknown'),
+            'type': jboss[item.pid].type | default('unknown'),
+            'version': jboss[item.pid].version | default('unknown'),
+            'cli_port': jboss_cli_port[item.pid].cli_port | default('unknown'),
+            'management_ip': jboss_cli_port[item.pid].management_ip | default('unknown'),
+            'ports': jboss_cli_port[item.pid].ports | default('unknown'),
+            'deployments': jboss_deployments[item.pid].deployments | default({})
+          }) if item.type == 'jboss' else omit,
+          'jar_info': ({
+            'jar_path_found': jar_resolved_paths[item.pid]['found'] | default(false),
+            'jar_path': jar_resolved_paths[item.pid]['path'] | default('unknown'),
+            'manifest': jar_info[item.pid].manifest | default('unknown')
+          }) if item.type == 'java-app' else omit,
+          'cmd': item.cmd
+        }]
+      }}
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  no_log: "{{ not log }}"
+
+- name: Debug java_processes
+  ansible.builtin.debug:
+    var: java_processes
+  when: debug

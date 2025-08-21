@@ -1,0 +1,152 @@
+- name: Inicializar facts webservers vazio
+  ansible.builtin.set_fact:
+    cacheable: true
+    webservers: []
+
+- name: Identificar instâncias de httpd e nginx
+  ansible.builtin.set_fact:
+    cacheable: true
+    webservers: |
+      {% filter from_yaml %}
+      {% for proc in processes if proc.command in ['httpd', 'nginx'] %}
+      - pid: "{{ proc.pid }}"
+        type: "{{ proc.command }}"
+      {% endfor %}
+      {% endfilter %}
+
+- name: Verificar se há instância httpd rodando
+  ansible.builtin.set_fact:
+    has_httpd: "{{ webservers | selectattr('type', 'equalto', 'httpd') | list | length > 0 }}"
+
+- name: Verificar se há instância nginx rodando
+  ansible.builtin.set_fact:
+    has_nginx: "{{ webservers | selectattr('type', 'equalto', 'nginx') | list | length > 0 }}"
+
+- name: Coletar versão do httpd
+  ansible.builtin.shell: "httpd -v 2>/dev/null | grep -oP 'Server version: Apache/\\K[\\d.]+'"
+  register: httpd_version
+  failed_when: false
+  changed_when: false
+  when: has_httpd
+
+- name: Coletar versão do nginx
+  ansible.builtin.shell: "nginx -v 2>&1 | grep -oP 'nginx/\\K[\\d.]+'"
+  register: nginx_version
+  failed_when: false
+  changed_when: false
+  when: has_nginx
+
+- name: Coletar versão do PHP
+  ansible.builtin.shell: "php -v 2>/dev/null | grep -oP '^PHP \\K[\\d.]+'"
+  register: php_version
+  failed_when: false
+  changed_when: false
+
+- name: Adicionar versões às instâncias httpd/nginx
+  ansible.builtin.set_fact:
+    cacheable: true
+    webservers: |
+      {% filter from_yaml %}
+      [
+      {% for server in webservers %}
+        {
+          "pid": "{{ server.pid }}",
+          "type": "{{ server.type }}",
+          "version": "{{ (
+            server.type == 'httpd' and httpd_version.stdout is defined
+          ) | ternary(httpd_version.stdout, (
+            server.type == 'nginx' and nginx_version.stdout is defined
+          ) | ternary(nginx_version.stdout, 'unknown')) }}",
+          "php_version": "{{ php_version.stdout | default('unknown') }}"
+        }{{ "," if not loop.last else "" }}
+      {% endfor %}
+      ]
+      {% endfilter %}
+
+- name: Buscar arquivos de configuração Apache
+  ansible.builtin.find:
+    paths:
+      - /etc/httpd/
+      - /etc/apache2/
+    patterns: "*.conf"
+    use_regex: false
+    recurse: true
+  register: apache_conf_files
+  failed_when: false
+  when: has_httpd
+
+- name: Ler arquivos de configuração Apache
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ apache_conf_files.files }}"
+  register: apache_confs_raw
+  when: has_httpd and apache_conf_files.files | length > 0
+
+- name: Extrair virtualhosts do Apache
+  ansible.builtin.set_fact:
+    apache_virtualhosts: >-
+      {{
+        apache_confs_raw.results
+        | map(attribute='content') | map('b64decode')
+        | map('regex_findall', '<VirtualHost\\s+[^>]+>(.*?)</VirtualHost>' , multiline=True)
+        | flatten
+        | map('regex_search', 'ServerName\\s+(\\S+)', '\\1')
+        | select('defined') | list
+      }}
+  when: has_httpd
+
+- name: Buscar arquivos de configuração Nginx
+  ansible.builtin.find:
+    paths:
+      - /etc/nginx/
+    patterns: "*.conf"
+    recurse: true
+  register: nginx_conf_files
+  failed_when: false
+  when: has_nginx
+
+- name: Ler arquivos de configuração Nginx
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ nginx_conf_files.files }}"
+  register: nginx_confs_raw
+  when: has_nginx and nginx_conf_files.files | length > 0
+
+- name: Extrair virtualhosts do Nginx
+  ansible.builtin.set_fact:
+    nginx_virtualhosts: >-
+      {{
+        nginx_confs_raw.results
+        | map(attribute='content') | map('b64decode')
+        | map('regex_findall', 'server_name\\s+([^;]+);')
+        | flatten | list
+      }}
+  when: has_nginx
+
+- name: Anexar virtualhosts ao fato webservers
+  ansible.builtin.set_fact:
+    cacheable: true
+    webservers: |
+      {% filter from_yaml %}
+      [
+      {% for server in webservers %}
+        {
+          "pid": "{{ server.pid }}",
+          "type": "{{ server.type }}",
+          "version": "{{ server.version }}",
+          "php_version": "{{ server.php_version }}",
+          "virtualhosts": {{
+            apache_virtualhosts if server.type == 'httpd'
+            else nginx_virtualhosts if server.type == 'nginx'
+            else []
+          }}
+        }{{ "," if not loop.last else "" }}
+      {% endfor %}
+      ]
+      {% endfilter %}
+  when: has_httpd or has_nginx
+
+- name: Debug webservers
+  ansible.builtin.debug:
+    var: webservers
+  when: debug

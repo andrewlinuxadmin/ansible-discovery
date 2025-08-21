@@ -1,0 +1,112 @@
+---
+- name: Initialize discovery
+  hosts: all
+  gather_facts: true
+  become: true
+  vars:
+    debug: false
+    log: false
+  tasks:
+    - name: Collect RHEL specific facts
+      ansible.posix.rhel_facts:
+      tags: always
+
+    - name: Collect list of installed packages
+      ansible.builtin.package_facts:
+        manager: auto
+      tags: packages
+
+    - name: Collect services
+      ansible.builtin.service_facts: {}
+      tags: services
+
+    - name: Collect active TCP/UDP ports
+      community.general.listen_ports_facts: {}
+      tags: ports
+
+    - name: Collect bootloader facts
+      fedora.linux_system_roles.bootloader_facts: {}
+      tags: bootloader
+
+    - name: Collect firewall facts
+      fedora.linux_system_roles.firewall_lib_facts: {}
+      tags: firewall
+
+    - name: Collect selinux facts
+      fedora.linux_system_roles.selinux_modules_facts: {}
+      tags: selinux
+
+    - name: Collect blockdev facts
+      tags: blockdev
+      block:
+        - name: Collect blockdev info
+          fedora.linux_system_roles.blockdev_info: {}
+          register: blockdev_info
+          tags: blockdev
+
+        - name: Set facts for blockdev
+          ansible.builtin.set_fact:
+            cacheable: true
+            blockdev: "{{ blockdev_info }}"
+          tags: blockdev
+
+    - name: Collect processes
+      tags: always
+      block:
+        - name: Collect processes - Listing processes except kernel threads
+          ansible.builtin.shell: >
+            set -o pipefail;
+            ps -eo pid=,user=,comm=,args= --no-headers
+            | awk '{
+              pid = $1;
+              user = $2;
+              comm = $3;
+              $1 = ""; $2 = ""; $3 = "";
+              sub(/^ +/, "", $0);
+              if ($0 ~ /^\[.*\]$/) next;
+              gsub(/\\/, "\\\\", $0);
+              gsub(/"/, "\\\"", $0);
+              cmd = "getent passwd " user " | cut -d: -f6";
+              cmd | getline homedir;
+              close(cmd);
+              if (homedir == "") homedir = "unknown";
+              printf "{\"pid\": \"%s\", \"user\": \"%s\", \"homedir\": \"%s\", \"command\": \"%s\", \"args\": \"%s\"}\n", pid, user, homedir, comm, $0;
+            }'
+          register: ps_output
+          changed_when: false
+          tags: always
+          no_log: "{{ not log }}"
+
+        - name: Collecting Processes - Creating facts with the Process List
+          ansible.builtin.set_fact:
+            cacheable: true
+            processes: "{{ ps_output.stdout_lines | map('from_json') | list }}"
+          tags: always
+
+# ------------------------- JAVA -------------------------
+
+    - name: Check for Java processes
+      ansible.builtin.set_fact:
+        cacheable: true
+        has_java_processes: "{{ processes | selectattr('args', 'search', 'java') | list | length > 0 }}"
+      tags: java
+
+    - name: Collects information from Java processes
+      ansible.builtin.import_tasks:
+        file: java/java.yaml
+      when: has_java_processes
+      tags: java
+
+# ---------------------- WEBSERVERS ----------------------
+
+    # - name: Check for webservers processes
+    #   ansible.builtin.set_fact:
+    #     cacheable: true
+    #     has_webservers_processes: "{{ processes | selectattr('command', 'in', ['httpd', 'nginx']) | list | length > 0 }}"
+    #   tags: webservers
+
+    # - name: Collects information from webservers processes
+    #   ansible.builtin.import_tasks:
+    #     file: webservers/webservers.yaml
+    #   when: has_webservers_processes
+    #   tags: webservers

@@ -1,0 +1,165 @@
+- name: Detect PID and CLI responsive port of JBoss
+  ansible.builtin.shell: |
+    set -o pipefail
+    JBOSS_PORTS=""
+    JBOSS_CLI_PORT=""
+    if command -v ss >/dev/null 2>&1; then
+      JBOSS_PORTS=$(ss -ltnp 2>/dev/null | awk -v pid="{{ item.pid }}" '$NF ~ pid {print $4}' | sed 's/.*://' | xargs)
+    else
+      JBOSS_PORTS=$(netstat -ltnp 2>/dev/null | awk -v pid="{{ item.pid }}" '$7 ~ pid {print $4}' | sed 's/.*://' | xargs)
+    fi
+
+    for PORT in $JBOSS_PORTS; do
+      OUT=$("{{ item.home }}/bin/jboss-cli.sh" --connect "controller={{ management_ip }}:${PORT}" ls 2>/dev/null)
+      if echo "$OUT" | grep -q "product-name"; then
+        JBOSS_CLI_PORT="$PORT"
+        break
+      fi
+    done
+    echo "{\"{{ item.pid }}\": {
+      \"cli_port\": \"$JBOSS_CLI_PORT\",
+      \"management_ip\": \"{{ management_ip }}\",
+      \"ports\": \"$JBOSS_PORTS\"}
+    }"
+  vars:
+    management_ip: "{{ (item.cmd | regex_search('-bmanagement[= ]([0-9.]+)', '\\1'))[0] | default('127.0.0.1') }}"
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  when: item.type == 'jboss'
+  register: jboss_cli_port_raw
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create jboss_cli_port infos
+  ansible.builtin.set_fact:
+    jboss_cli_port: "{{ jboss_cli_port | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ jboss_cli_port_raw.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug jboss_cli_port
+  ansible.builtin.debug:
+    var: jboss_cli_port
+  when: debug
+
+- name: Extract version, mode and type from JBoss
+  ansible.builtin.shell: |
+    set -o pipefail
+    JBOSS_VERSION="unknown"
+    if [ -f "{{ item.home }}/version.txt" ]; then
+      JBOSS_VERSION=$(cat "{{ item.home }}/version.txt")
+    else
+      [ "{{ cli_port }}" == "" ] && continue
+      JBOSS_CLI_OUT=$("{{ item.home }}/bin/jboss-cli.sh" --connect "controller={{ management_ip }}:{{ cli_port }}" ls 2>/dev/null)
+      [ $? -ne 0 ] && continue
+      NAME=$(echo "$JBOSS_CLI_OUT" | awk -F= '/product-name/ {gsub(/^ +| +$/, "", $2); print $2}')
+      VER=$(echo "$JBOSS_CLI_OUT" | awk -F= '/product-version/ {gsub(/^ +| +$/, "", $2); print $2}')
+      if [ -n "$NAME" ] && [ -n "$VER" ]; then
+        JBOSS_VERSION="$NAME $VER"
+        break
+      fi
+    fi
+    JBOSS_TYPE="wildfly"
+    JBOSS_REDHAT_JARS=$(find /home/acarlos/jboss/server/modules -name '*-redhat-*.jar' | wc -l)
+    if [ $JBOSS_REDHAT_JARS -gt 200 ]; then
+      JBOSS_TYPE="jboss"
+    fi
+    echo "{\"{{ item.pid }}\": {
+      \"mode\": \"{{ mode }}\",
+      \"type\": \"$JBOSS_TYPE\",
+      \"version\": \"$JBOSS_VERSION\"}
+    }"
+  vars:
+    cli_port: "{{ jboss_cli_port[item.pid]['cli_port'] }}"
+    management_ip: "{{ jboss_cli_port[item.pid]['management_ip'] }}"
+    mode: >-
+      {{
+        'standalone' if 'org.jboss.as.standalone' in item.cmd else
+        'domain' if 'org.jboss.as.process-controller' in item.cmd else
+        'server' if 'org.jboss.as.server' in item.cmd else
+        'unknown'
+      }}
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  when: item.type == 'jboss'
+  register: jboss_info_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Debug jboss_info_shell
+  ansible.builtin.debug:
+    var: jboss_info_shell
+  when: debug
+
+- name: Create JBoss infos
+  ansible.builtin.set_fact:
+    jboss: "{{ jboss | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ jboss_info_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug jboss
+  ansible.builtin.debug:
+    var: jboss
+  when: debug
+
+- name: Get deployments JSON from jboss-cli
+  ansible.builtin.shell: |
+    set -o pipefail
+    {{ item.home }}/bin/jboss-cli.sh \
+      --connect "controller={{ management_ip }}:{{ cli_port }}" \
+      --output-json \
+      --command=/deployment='*/:read-resource(include-runtime=true,include-defaults=true)' 2>/dev/null || echo "{}"
+  vars:
+    cli_port: "{{ jboss_cli_port[item.pid]['cli_port'] }}"
+    management_ip: "{{ jboss_cli_port[item.pid]['management_ip'] }}"
+  register: jboss_cli_response
+  changed_when: false
+  failed_when: false
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  when: item.type == 'jboss' and cli_port != ""
+  no_log: "{{ not log }}"
+
+- name: Parse deployments JSON and attach PID
+  ansible.builtin.set_fact:
+    jboss_deployments: >-
+      {{
+        jboss_deployments | default({}) | combine({
+          (item.item.pid | string): {
+            'deployments': ns.ok_list | default([])
+          }
+        })
+      }}
+  vars:
+    ns: >-
+      {% set ns = namespace(ok_list=[]) %}
+      {% set deploy_json = (item.stdout | default('[]') | from_json) %}
+      {% for deploy in (deploy_json.result | default([])) %}
+        {%- if deploy.result.status == "OK" -%}
+          {%- set _ = ns.ok_list.append({
+            "name": deploy.result["name"] | default("unknown", true),
+            "runtime-name": deploy.result["runtime-name"] | default("unknown", true),
+            "persistent": deploy.result["persistent"] | default("unknown", true),
+            "enabled": deploy.result["enabled"] | default("unknown", true),
+            "enabled-timestamp": deploy.result["enabled-timestamp"] | default("unknown", true),
+            "disabled-timestamp": deploy.result["disabled-timestamp"] | default("unknown", true),
+            "managed": deploy.result["managed"] | default("unknown", true),
+            "subdeployment": deploy.result["subdeployment"] | default("unknown", true)
+          }) -%}
+        {%- endif -%}
+      {% endfor %}
+      {{ ns }}
+  loop: "{{ jboss_cli_response.results }}"
+  loop_control:
+    label: "{{ item.item.pid }}"
+
+- name: Debug jboss_deployments
+  ansible.builtin.debug:
+    var: jboss_deployments
+  when: debug

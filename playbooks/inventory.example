@@ -1,0 +1,10 @@
+[webservers]
+web01 ansible_host=192.168.1.10 ansible_user=admin
+web02 ansible_user=admin
+
+[appservers]
+app01 ansible_host=192.168.1.20 ansible_user=appuser
+app02
+
+[databases]
+db01

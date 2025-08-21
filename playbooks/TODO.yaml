@@ -1,0 +1,39 @@
+---
+# Playbook discovery
+# TODO
+
+Processos:
+  - has_ruby_process
+  - has_php-fpm_process
+  - has_dotnet_process
+  - has_docker_process
+  - has_python_process
+
+Tomcat:
+  - listar pastas dentro de webapps do tomcat
+
+JBoss:
+  - listar deploy do jboss.
+  - Identificar se é JBoss ou Wildfly. find $home/modules -name *-redhat-*.jar
+
+PHP:
+  - listar modulos php
+
+Httpd:
+  - Criar um exemplo com virtualhost
+
+Nginx:
+  - Criar um exemplo com virtualhost
+
+Docker:
+  - Listar containers
+  - Listar os processos dentro do container
+  - Listar portas abertas
+
+Podman:
+  - Listar containers
+  - Listar os processos dentro do container
+  - Listar portas abertas
+
+Dashboard:
+  - Usar Grafana conectado ao mongodb

@@ -1,0 +1,305 @@
+- name: Extract infos from Tomcat
+  ansible.builtin.shell: |
+    set -o pipefail
+    TOMCAT_VERSION='unknown'
+    if [ -f "{{ item.home }}/RELEASE-NOTES" ]; then
+      TOMCAT_VERSION="$(grep -i "Apache Tomcat Version" "{{ item.home }}/RELEASE-NOTES")"
+    elif [ -f "{{ item.home }}/version.txt" ]; then
+      TOMCAT_VERSION="$(cat "{{ item.home }}/version.txt")"
+    elif [ -f "{{ item.home }}/lib/catalina.jar" ]; then
+      TOMCAT_VERSION="$(unzip -p "{{ item.home }}/lib/catalina.jar" META-INF/MANIFEST.MF | grep Specification-Version)"
+    fi
+    TOMCAT_VERSION="$(echo "$TOMCAT_VERSION" | xargs)"
+    echo "{\"{{ item.pid }}\": {\"version\": \"$TOMCAT_VERSION\"}}"
+  loop: "{{ java_processes_raw }}"
+  when: item.type == 'tomcat'
+  register: tomcat_info_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create tomcat_versions infos
+  ansible.builtin.set_fact:
+    tomcat_versions: "{{ tomcat_versions | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ tomcat_info_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug tomcat_version
+  ansible.builtin.debug:
+    var: tomcat_versions
+  when: debug
+
+- name: Read tomcat-users.xml content
+  ansible.builtin.slurp:
+    src: "{{ item.home }}/conf/tomcat-users.xml"
+  register: tomcat_xml_raw
+  when: item.type == 'tomcat'
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  no_log: "{{ not log }}"
+
+- name: Debug tomcat_xml_raw
+  ansible.builtin.debug:
+    var: tomcat_xml_raw
+  when: debug
+
+- name: Decode Tomcat users XML content
+  ansible.builtin.set_fact:
+    tomcat_users_content: >-
+      {{
+        tomcat_users_content | default({}) | combine(
+          {
+            item.item.pid: item.content
+          }
+        )
+      }}
+  when: item.item.type == 'tomcat'
+  loop: "{{ tomcat_xml_raw.results }}"
+  loop_control:
+    label: "{{ item.item.pid }}"
+  no_log: "{{ not log }}"
+
+- name: Debug tomcat_users_content
+  ansible.builtin.debug:
+    var: tomcat_users_content
+  when: debug
+
+- name: Parse XML for <user> elements
+  community.general.xml:
+    xmlstring: "{{ tomcat_users_content[item.pid] | b64decode }}"
+    xpath: /tomcat-users/user
+    content: attribute
+  register: tomcat_user_elements
+  when: item.type == 'tomcat'
+  failed_when: false
+  ignore_errors: true
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  no_log: "{{ not log }}"
+
+- name: Debug tomcat_user_elements
+  ansible.builtin.debug:
+    var: tomcat_user_elements
+  when: debug
+
+- name: Append each user with split roles to tomcat_users
+  ansible.builtin.set_fact:
+    tomcat_users: "{{ users_dict | from_yaml }}"
+  vars:
+    users_dict: >-
+      {% set users = {} %}
+      {% for result in tomcat_user_elements.results %}
+        {% set pid = result.item.pid %}
+        {% if result is defined and result.matches is defined %}
+          {% for match in result.matches %}
+            {% set roles = (match.user.roles | default('') | split(',')) | default([]) %}
+            {% set primary_manager_role =
+                'manager-script' if 'manager-script' in roles
+                else 'manager-gui' if 'manager-gui' in roles
+                else ''
+            %}
+            {% set get_deployments_method =
+                'api' if 'manager-script' in roles
+                else 'gui' if 'manager-gui' in roles
+                else 'webapps_directory'
+            %}
+            {% set _ = users.update({
+              pid: {
+                'username': match.user.username,
+                'password': match.user.password,
+                'roles': roles,
+                'primary_manager_role': primary_manager_role,
+                'get_deployments_method': get_deployments_method
+              }
+            }) %}
+          {% endfor %}
+        {% else %}
+          {% set _ = users.update({
+            pid: {
+              'username': 'unknown',
+              'password': 'unknown',
+              'roles': [],
+              'primary_manager_role': 'unknown'
+            }
+          }) %}
+        {% endif %}
+      {% endfor %}
+      {{ users }}
+
+- name: Debug tomcat_users
+  ansible.builtin.debug:
+    var: tomcat_users
+  when: debug
+
+- name: Discover Tomcat Manager URL for PID
+  ansible.builtin.shell: |
+    set -o pipefail
+    PID="{{ item.pid }}"
+    if command -v ss >/dev/null 2>&1; then
+      ADDRS="$(
+        ss -H -ltnp \
+        | awk -v pid="$PID" '/LISTEN/ && $0 ~ ("pid=" pid) {print $4}' \
+        | sort -u
+      )"
+    else
+      ADDRS="$(
+        netstat -ltnp 2>/dev/null \
+        | awk -v pid="$PID" '/LISTEN/ && $0 ~ ("[[:space:]]" pid "/") {print $4}' \
+        | sort -u
+      )"
+    fi
+    found=""
+    for addr in $ADDRS; do
+      ip=""
+      port=""
+      case "$addr" in
+        \[*\]*:*)
+          # [ipv6]:port
+          ip=$(printf '%s' "$addr" | sed -E 's/^\[([^]]+)\]:(.*)$/\1/')
+          port=$(printf '%s' "$addr" | sed -E 's/^\[([^]]+)\]:(.*)$/\2/')
+          ;;
+        *)
+          # host:port (ex.: 0.0.0.0:8080, 127.0.0.1:8080, :::8080)
+          ip="${addr%:*}"
+          port="${addr##*:}"
+          ;;
+      esac
+      if [[ "$ip" =~ ^::ffff: ]]; then
+        ip="${ip#::ffff:}"
+      fi
+      if [ -z "$ip" ] || [ "$ip" = "0.0.0.0" ] || [ "$ip" = "::" ] || [ "$ip" = ":::" ]; then
+        ip="127.0.0.1"
+      fi
+      url="http://${ip}:${port}/manager/html"
+      code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 4 "$url" || true)
+      if [ "$code" = "200" ] || [ "$code" = "401" ]; then
+        found="http://${ip}:${port}"
+        break
+      fi
+    done
+    echo "{\"{{ item.pid }}\": \"$found\"}"
+  register: tomcat_manager_address_raw
+  changed_when: false
+  when: item.type == 'tomcat'
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  no_log: "{{ not log }}"
+
+- name: Create tomcat_manager_address infos
+  ansible.builtin.set_fact:
+    tomcat_manager_address: "{{ tomcat_manager_address | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ tomcat_manager_address_raw.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug tomcat_manager_address
+  ansible.builtin.debug:
+    var: tomcat_manager_address
+  when: debug
+
+- name: Get Tomcat deployments if user has manager-script access
+  ansible.builtin.shell: |
+    set -o pipefail
+    RESULT=""
+    if [ "{{ tomcat_users[item.pid].primary_manager_role }}" == "manager-script" ]; then
+      RESULT=$(curl -s -u '{{ tomcat_users[item.pid].username }}':'{{ tomcat_users[item.pid].password }}' '{{ tomcat_manager_address[item.pid] }}/manager/text/list' | base64 -w0)
+    elif [ "{{ tomcat_users[item.pid].primary_manager_role }}" == "manager-gui" ]; then
+      RESULT=$(curl -s -u '{{ tomcat_users[item.pid].username }}':'{{ tomcat_users[item.pid].password }}' '{{ tomcat_manager_address[item.pid] }}/manager/html' | base64 -w0)
+    else
+      RESULT=$(find "{{ item.home }}/webapps" -mindepth 1 -maxdepth 1 -printf "%f\n" | awk '
+        BEGIN{printf "["}
+            {gsub(/"/,"\\\""); printf "%s\"%s\"", sep, $0; sep=","}
+            END{print "]"}
+      ' | base64 -w0)
+    fi
+    echo "{\"{{ item.pid }}\": \"$RESULT\"}"
+  register: tomcat_deployments_script_raw
+  when:
+    - item.type == 'tomcat'
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  changed_when: false
+  no_log: "{{ not log }}"
+
+- name: Debug tomcat_deployments_script_raw
+  ansible.builtin.debug:
+    var: tomcat_deployments_script_raw
+  when: debug
+
+- name: Create tomcat_deployments_raw infos
+  ansible.builtin.set_fact:
+    tomcat_deployments_raw: "{{ tomcat_deployments_raw | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ tomcat_deployments_script_raw.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Parse deployments
+  ansible.builtin.set_fact:
+    tomcat_deployments: "{{ tomcat_deployments | default([]) | combine(deployments | from_yaml) }}"
+  vars:
+    deployments: >-
+      {% set deployments_decoded = tomcat_deployments_raw[item.pid] | b64decode %}
+      {% set deployments = [] %}
+      {% if tomcat_users[item.pid].primary_manager_role == 'manager-script' %}
+        {% for deploy in (deployments_decoded | regex_findall('(?m)^(/[^:]*):([^:]+):([^:]+):(.+)$') | default([])) %}
+          {% set _ = deployments.append(
+            {
+              'context': deploy.0,
+              'status': deploy.1,
+              'sessions': deploy.2,
+              'name': deploy.1
+            } | from_yaml
+          ) %}
+        {% endfor %}
+      {% elif tomcat_users[item.pid].primary_manager_role == 'manager-gui' %}
+        {% set rows = deployments_decoded
+          | regex_replace('<style.*?</style>', '', multiline=True)
+          | regex_replace('<(img|br|meta)[^>]*>', '')
+          | regex_findall('(?s)<tr>.*?</tr>')
+          | map('regex_replace', '<td>', '')
+          | map('regex_replace', '</td>', '^')
+          | map('regex_replace', '<[^>]+>', '')
+          | map('regex_replace', '\n\s*', '')
+          | map('regex_replace', '&nbsp;', '')
+          | select('match', '^/')
+          | list
+        %}
+        {% for row in rows %}
+          {% set rowsplit = row | split('^') %}
+          {% set _ = deployments.append(
+            {
+              "context": rowsplit[0] | default('unknown'),
+              "name": rowsplit[2] | default('unknown'),
+              "sessions": rowsplit[4] | default('unknown'),
+              "status": (rowsplit[3] == 'true' | ternary('running', 'stopped')) | default('unknown'),
+            } | from_yaml
+          ) %}
+        {% endfor %}
+      {% else %}
+        {% for deploy in (deployments_decoded | default([]) | from_json) %}
+          {% set _ = deployments.append(
+            {
+              "context": "/" if deploy == "ROOT" else "/"+deploy,
+              "name": deploy,
+              "sessions": "unknown",
+              "status": "unknown"
+            } | from_yaml
+          ) %}
+        {% endfor %}
+      {% endif %}
+      {{ { item.pid: deployments } }}
+  when: item.type == 'tomcat'
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  no_log: "{{ not log }}"
+
+- name: Debug tomcat_deployments
+  ansible.builtin.debug:
+    var: tomcat_deployments
+  when: debug

@@ -1,0 +1,9 @@
+# Markdownlint configuration
+# Disable line length rule for readability
+MD013: false
+
+# Allow emphasis as heading for some cases
+MD036: false
+
+# Be more lenient with trailing punctuation in headings
+MD026: false

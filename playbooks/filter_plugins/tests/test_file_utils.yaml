@@ -1,0 +1,224 @@
+---
+# Test playbook for custom file utility filters
+# This playbook validates the functionality of file_exists, path_exists, and file_readable filters
+
+- name: Test Custom File Utility Filters
+  hosts: localhost
+  gather_facts: false
+  vars:
+    test_results: []
+    test_files:
+      readable_file: "/etc/passwd"
+      unreadable_file: "/etc/shadow"
+      directory: "/etc"
+      nonexistent_file: "/nonexistent/file"
+      temp_test_file: "/tmp/ansible_filter_test_file"
+
+  tasks:
+    - name: Create temporary test file
+      copy:
+        content: "test content for filter validation"
+        dest: "{{ test_files.temp_test_file }}"
+        mode: '0644'
+
+    # Test file_exists filter
+    - name: "Test file_exists with readable file"
+      assert:
+        that:
+          - test_files.readable_file | file_exists
+        fail_msg: "file_exists filter failed for {{ test_files.readable_file }}"
+        success_msg: "✅ file_exists correctly identified readable file"
+
+    - name: "Test file_exists with unreadable file"
+      assert:
+        that:
+          - test_files.unreadable_file | file_exists
+        fail_msg: "file_exists filter failed for {{ test_files.unreadable_file }}"
+        success_msg: "✅ file_exists correctly identified unreadable file"
+
+    - name: "Test file_exists with directory (should be false)"
+      assert:
+        that:
+          - not (test_files.directory | file_exists)
+        fail_msg: "file_exists should return false for directories"
+        success_msg: "✅ file_exists correctly rejected directory"
+
+    - name: "Test file_exists with nonexistent file"
+      assert:
+        that:
+          - not (test_files.nonexistent_file | file_exists)
+        fail_msg: "file_exists should return false for nonexistent files"
+        success_msg: "✅ file_exists correctly identified nonexistent file"
+
+    - name: "Test file_exists with temp test file"
+      assert:
+        that:
+          - test_files.temp_test_file | file_exists
+        fail_msg: "file_exists failed for temporary test file"
+        success_msg: "✅ file_exists correctly identified temp test file"
+
+    # Test path_exists filter
+    - name: "Test path_exists with readable file"
+      assert:
+        that:
+          - test_files.readable_file | path_exists
+        fail_msg: "path_exists filter failed for {{ test_files.readable_file }}"
+        success_msg: "✅ path_exists correctly identified readable file"
+
+    - name: "Test path_exists with directory"
+      assert:
+        that:
+          - test_files.directory | path_exists
+        fail_msg: "path_exists filter failed for {{ test_files.directory }}"
+        success_msg: "✅ path_exists correctly identified directory"
+
+    - name: "Test path_exists with nonexistent path"
+      assert:
+        that:
+          - not (test_files.nonexistent_file | path_exists)
+        fail_msg: "path_exists should return false for nonexistent paths"
+        success_msg: "✅ path_exists correctly identified nonexistent path"
+
+    - name: "Test path_exists with temp test file"
+      assert:
+        that:
+          - test_files.temp_test_file | path_exists
+        fail_msg: "path_exists failed for temporary test file"
+        success_msg: "✅ path_exists correctly identified temp test file"
+
+    # Test file_readable filter
+    - name: "Test file_readable with readable file"
+      assert:
+        that:
+          - test_files.readable_file | file_readable
+        fail_msg: "file_readable filter failed for {{ test_files.readable_file }}"
+        success_msg: "✅ file_readable correctly identified readable file"
+
+    - name: "Test file_readable with unreadable file"
+      assert:
+        that:
+          - not (test_files.unreadable_file | file_readable)
+        fail_msg: "file_readable should return false for {{ test_files.unreadable_file }}"
+        success_msg: "✅ file_readable correctly identified unreadable file"
+
+    - name: "Test file_readable with directory (should be false)"
+      assert:
+        that:
+          - not (test_files.directory | file_readable)
+        fail_msg: "file_readable should return false for directories"
+        success_msg: "✅ file_readable correctly rejected directory"
+
+    - name: "Test file_readable with nonexistent file"
+      assert:
+        that:
+          - not (test_files.nonexistent_file | file_readable)
+        fail_msg: "file_readable should return false for nonexistent files"
+        success_msg: "✅ file_readable correctly identified nonexistent file"
+
+    - name: "Test file_readable with temp test file"
+      assert:
+        that:
+          - test_files.temp_test_file | file_readable
+        fail_msg: "file_readable failed for temporary test file"
+        success_msg: "✅ file_readable correctly identified temp test file"
+
+    # Error handling tests
+    - name: "Test filters with empty string"
+      assert:
+        that:
+          - not ("" | file_exists)
+          - not ("" | path_exists)
+          - not ("" | file_readable)
+        fail_msg: "Filters should handle empty strings gracefully"
+        success_msg: "✅ All filters handle empty strings correctly"
+
+    - name: "Test filters with null value"
+      vars:
+        null_value: null
+      assert:
+        that:
+          - not (null_value | file_exists)
+          - not (null_value | path_exists)
+          - not (null_value | file_readable)
+        fail_msg: "Filters should handle null values gracefully"
+        success_msg: "✅ All filters handle null values correctly"
+
+    # Comparative tests
+    - name: "Verify filter behavior differences"
+      block:
+        - name: "Compare filters on readable file"
+          set_fact:
+            readable_results:
+              file_exists: "{{ test_files.readable_file | file_exists }}"
+              path_exists: "{{ test_files.readable_file | path_exists }}"
+              file_readable: "{{ test_files.readable_file | file_readable }}"
+
+        - name: "Compare filters on directory"
+          set_fact:
+            directory_results:
+              file_exists: "{{ test_files.directory | file_exists }}"
+              path_exists: "{{ test_files.directory | path_exists }}"
+              file_readable: "{{ test_files.directory | file_readable }}"
+
+        - name: "Compare filters on unreadable file"
+          set_fact:
+            unreadable_results:
+              file_exists: "{{ test_files.unreadable_file | file_exists }}"
+              path_exists: "{{ test_files.unreadable_file | path_exists }}"
+              file_readable: "{{ test_files.unreadable_file | file_readable }}"
+
+        - name: "Validate expected filter differences"
+          assert:
+            that:
+              # Readable file should return true for all
+              - readable_results.file_exists == true
+              - readable_results.path_exists == true
+              - readable_results.file_readable == true
+              # Directory should only return true for path_exists
+              - directory_results.file_exists == false
+              - directory_results.path_exists == true
+              - directory_results.file_readable == false
+              # Unreadable file should return true for existence but false for readable
+              - unreadable_results.file_exists == true
+              - unreadable_results.path_exists == true
+              - unreadable_results.file_readable == false
+            fail_msg: "Filter behavior differences validation failed"
+            success_msg: "✅ All filter behavior differences validated correctly"
+
+    # Performance test with multiple files
+    - name: "Performance test with file list"
+      vars:
+        test_file_list:
+          - "/etc/passwd"
+          - "/etc/hosts"
+          - "/etc/hostname"
+          - "/nonexistent1"
+          - "/nonexistent2"
+      set_fact:
+        existing_files: "{{ existing_files | default([]) + [item] }}"
+      loop: "{{ test_file_list }}"
+      when: item | file_exists
+
+    - name: "Validate performance test results"
+      assert:
+        that:
+          - existing_files | length >= 2
+        fail_msg: "Performance test should find at least 2 existing files"
+        success_msg: "✅ Performance test completed successfully"
+
+    - name: "Display test summary"
+      debug:
+        msg:
+          - "🎉 All filter tests completed successfully!"
+          - "✅ file_exists: Validates file existence"
+          - "✅ path_exists: Validates path existence (file or directory)"
+          - "✅ file_readable: Validates file existence and readability"
+          - "📊 Found {{ existing_files | length }} existing files in performance test"
+          - "🔧 Filter plugins are working correctly"
+
+  post_tasks:
+    - name: Cleanup temporary test file
+      file:
+        path: "{{ test_files.temp_test_file }}"
+        state: absent
+      ignore_errors: true

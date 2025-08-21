@@ -1,0 +1,61 @@
+# MongoDB data directory
+mongodbdata/
+
+# Virtual environment activation script
+activate
+
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+
+# Ansible generated files
+**/.ansible/
+**/.ansible_async/
+*.retry
+
+# IDE and editor files
+**/.vscode/
+**/.idea/
+*.swp
+*.swo
+*~
+
+# Playbooks specific IDE files (explicit)
+playbooks/.vscode/
+
+# Temporary files
+**/.temp/
+**/.tmp/
+**/.lock/
+*.tmp
+*.log
+
+# Local History (VS Code extension)
+**/.lh/
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment specific
+python-3.9-ansible-2.14/
+venv/
+.env
+.venv/
+
+# Git repository management
+.github/copilot-instructions.md
+
+# Ansible collections (downloaded dependencies)
+playbooks/collections/
+
+# Local inventory file (contains sensitive data)
+playbooks/inventory
