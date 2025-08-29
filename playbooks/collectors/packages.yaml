@@ -1,0 +1,34 @@
+# Package collection tasks for Ansible Discovery
+# This file contains tasks for collecting installed packages information
+# with fallback support for different package managers
+
+- name: Collect list of installed packages
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: Fallback - Collect packages manually for Ubuntu/Debian
+  ansible.builtin.shell: |
+    if command -v dpkg >/dev/null 2>&1; then
+      dpkg -l | awk '/^ii/ {print $2 "=" $3}' | head -100
+    elif command -v rpm >/dev/null 2>&1; then
+      rpm -qa --queryformat "%{NAME}=%{VERSION}-%{RELEASE}\n" | head -100
+    else
+      echo "unknown_package_manager"
+    fi
+  args:
+    executable: /bin/bash
+  register: packages_manual
+  when: ansible_facts.packages is not defined
+  failed_when: false
+  changed_when: false
+  no_log: "{{ not log | default(false) }}"
+
+- name: Set packages fact from manual collection
+  ansible.builtin.set_fact:
+    packages_list: "{{ packages_manual.stdout_lines | default([]) }}"
+    cacheable: true
+  when:
+    - ansible_facts.packages is not defined
+    - packages_manual is defined
+    - packages_manual.stdout_lines is defined

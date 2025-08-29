@@ -7,106 +7,99 @@
     debug: false
     log: false
   tasks:
-    - name: Collect RHEL specific facts
-      ansible.posix.rhel_facts:
-      tags: always
-
-    - name: Collect list of installed packages
-      ansible.builtin.package_facts:
-        manager: auto
-      tags: packages
-
-    - name: Collect services
-      ansible.builtin.service_facts: {}
-      tags: services
-
-    - name: Collect active TCP/UDP ports
-      community.general.listen_ports_facts: {}
-      tags: ports
-
-    - name: Collect bootloader facts
-      fedora.linux_system_roles.bootloader_facts: {}
-      tags: bootloader
-
-    - name: Collect firewall facts
-      fedora.linux_system_roles.firewall_lib_facts: {}
-      tags: firewall
-
-    - name: Collect selinux facts
-      fedora.linux_system_roles.selinux_modules_facts: {}
-      tags: selinux
-
-    - name: Collect blockdev facts
-      tags: blockdev
-      block:
-        - name: Collect blockdev info
-          fedora.linux_system_roles.blockdev_info: {}
-          register: blockdev_info
-          tags: blockdev
-
-        - name: Set facts for blockdev
-          ansible.builtin.set_fact:
-            cacheable: true
-            blockdev: "{{ blockdev_info }}"
-          tags: blockdev
+    - name: Configure discovery prerequisites
+      ansible.builtin.include_tasks:
+        file: prereqs.yaml
 
     - name: Collect processes
-      tags: always
       block:
-        - name: Collect processes - Listing processes except kernel threads
-          ansible.builtin.shell: >
-            set -o pipefail;
-            ps -eo pid=,user=,comm=,args= --no-headers
-            | awk '{
-              pid = $1;
-              user = $2;
-              comm = $3;
-              $1 = ""; $2 = ""; $3 = "";
-              sub(/^ +/, "", $0);
-              if ($0 ~ /^\[.*\]$/) next;
-              gsub(/\\/, "\\\\", $0);
-              gsub(/"/, "\\\"", $0);
-              cmd = "getent passwd " user " | cut -d: -f6";
-              cmd | getline homedir;
-              close(cmd);
-              if (homedir == "") homedir = "unknown";
-              printf "{\"pid\": \"%s\", \"user\": \"%s\", \"homedir\": \"%s\", \"command\": \"%s\", \"args\": \"%s\"}\n", pid, user, homedir, comm, $0;
-            }'
-          register: ps_output
-          changed_when: false
-          tags: always
-          no_log: "{{ not log }}"
+        - name: Collect process facts using custom module
+          process_facts:
+            exclude_kernel_threads: true
+            detect_containers: true
 
-        - name: Collecting Processes - Creating facts with the Process List
-          ansible.builtin.set_fact:
-            cacheable: true
-            processes: "{{ ps_output.stdout_lines | map('from_json') | list }}"
-          tags: always
+        - name: Debug processes
+          ansible.builtin.debug:
+            var: processes
+          when: debug
+
+    - name: Collect RHEL specific facts
+      ansible.posix.rhel_facts:
+
+    - name: Collect package facts
+      ansible.builtin.include_tasks:
+        file: collectors/packages.yaml
+      when: _collector_packages | bool
+
+    - name: Collect service facts
+      ansible.builtin.include_tasks:
+        file: collectors/services.yaml
+      when: _collector_services | bool
+
+    - name: Collect open-ports facts
+      ansible.builtin.include_tasks:
+        file: collectors/ports.yaml
+      when: _collector_ports | bool
+
+    - name: Collect bootloader facts
+      ansible.builtin.include_tasks:
+        file: collectors/bootloader.yaml
+      when: _collector_bootloader | bool
+
+    - name: Collect firewall facts
+      ansible.builtin.include_tasks:
+        file: collectors/firewall.yaml
+      when: _collector_firewall | bool
+
+    - name: Collect selinux facts
+      ansible.builtin.include_tasks:
+        file: collectors/selinux.yaml
+      when: _collector_selinux | bool
+
+    - name: Collect blockdev facts
+      ansible.builtin.include_tasks:
+        file: collectors/blockdev.yaml
+      when: _collector_blockdev | bool
 
 # ------------------------- JAVA -------------------------
 
-    - name: Check for Java processes
-      ansible.builtin.set_fact:
-        cacheable: true
-        has_java_processes: "{{ processes | selectattr('args', 'search', 'java') | list | length > 0 }}"
-      tags: java
+    - name: Collect java
+      when: _collector_java | bool
+      block:
+        - name: Check for Java processes
+          ansible.builtin.set_fact:
+            cacheable: true
+            has_java_processes: "{{ processes | selectattr('command', 'in', ['java']) | list | length > 0 }}"
 
-    - name: Collects information from Java processes
-      ansible.builtin.import_tasks:
-        file: java/java.yaml
-      when: has_java_processes
-      tags: java
+        - name: Collects information from Java processes
+          ansible.builtin.include_tasks:
+            file: collectors/java/java.yaml
+          when: has_java_processes | default(false)
 
-# ---------------------- WEBSERVERS ----------------------
+# ------------------------ APACHE ------------------------
 
-    # - name: Check for webservers processes
-    #   ansible.builtin.set_fact:
-    #     cacheable: true
-    #     has_webservers_processes: "{{ processes | selectattr('command', 'in', ['httpd', 'nginx']) | list | length > 0 }}"
-    #   tags: webservers
+    - name: Collect Apache
+      when: _collector_apache | bool
+      block:
+        - name: Check for Apache processes
+          ansible.builtin.set_fact:
+            has_apache_processes: "{{ processes | selectattr('command', 'in', ['httpd', 'apache2']) | list | length > 0 }}"
 
-    # - name: Collects information from webservers processes
-    #   ansible.builtin.import_tasks:
-    #     file: webservers/webservers.yaml
-    #   when: has_webservers_processes
-    #   tags: webservers
+        - name: Collects information from Apache processes
+          ansible.builtin.include_tasks:
+            file: collectors/apache.yaml
+          when: has_apache_processes | default(false)
+
+# ------------------------ NGINX -------------------------
+
+    - name: Collect Nginx
+      when: _collector_nginx | bool
+      block:
+        - name: Check for Nginx processes
+          ansible.builtin.set_fact:
+            has_nginx_processes: "{{ processes | selectattr('command', 'in', ['nginx']) | list | length > 0 }}"
+
+        - name: Collects information from Nginx processes
+          ansible.builtin.include_tasks:
+            file: collectors/nginx.yaml
+          when: has_nginx_processes | default(false)

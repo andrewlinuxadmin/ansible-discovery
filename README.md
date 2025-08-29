@@ -2,70 +2,60 @@
 
 **Automated infrastructure discovery system for Linux servers using Ansible**
 
-A comprehensive solution that collects detailed information about running
-processes, Java applications, web servers, and system services,
-storing data in MongoDB with intelligent caching for analysis and reporting.
+A comprehensive solution that collects detailed information about processes, Java applications, web servers, and system services, storing data in MongoDB with intelligent caching for analysis and reporting.
 
 ## ✨ Features
 
-### 🔍 **Comprehensive Discovery**
+### 🔍 **Multi-Stage Discovery Pipeline**
 
-- **Process Analysis**: Smart detection excluding kernel threads with JSON-structured output
+- **Selective Collection**: Use `collector_only` parameter for targeted discovery
+- **Process Analysis**: Smart detection with JSON-structured output
 - **Java Applications**: Deep inspection of Tomcat, JBoss/Wildfly, and standalone JARs
-- **Web Servers**: Apache HTTPD and Nginx with virtual host extraction  
-- **System Information**: Packages, services, network ports, and security settings
+- **Web Servers**: Apache HTTPD and Nginx with configuration extraction
+- **System Information**: Packages, services, network ports, firewall, and bootloader
 
 ### 🚀 **Advanced Capabilities**
 
+- **Hybrid Collection**: Official roles with manual fallbacks
+- **Container Detection**: Automatic adjustment for containerized environments
 - **Custom Filters**: File existence checks and path validation
 - **MongoDB Caching**: Persistent storage with configurable TTL
-- **Modular Design**: Tag-based execution for selective discovery
+- **Cross-Platform**: RHEL, Debian, SUSE support with unified output
 
-### 🛠 **Developer Experience**
+### 🛠 **Modular Architecture**
 
-- **VS Code Integration**: Workspace configuration and settings
-- **Quality Assurance**: Markdown linting and Python standards
-- **Smart Session Management**: Automatic tab closure for deleted files
+- **Selective Execution**: Target specific collectors with absolute precedence
+- **Conditional Processing**: Process-based discovery for Java/web applications
+- **Graceful Degradation**: Fallback mechanisms for missing tools/permissions
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- **System Requirements**: Linux with Python 3.9+
+- **System**: Linux with Python 3.9+
 - **Database**: MongoDB instance (local or remote)
-- **Network Access**: SSH connectivity to target servers
+- **Network**: SSH connectivity to target servers
 - **Permissions**: Sudo access on target machines
 
 ### Installation
 
-1. **Clone the repository**
+1. **Clone and setup environment**
 
    ```bash
    git clone https://github.com/andrewlinuxadmin/ansible-discovery.git
    cd ansible-discovery
-   ```
-
-2. **Setup Python environment**
-
-   ```bash
-   # Install UV package manager
-   curl -LsSf https://astral.sh/uv/install.sh | sh
    
-   # Create Python environment
-   uv python install 3.9
-   uv venv --python 3.9
-   source .venv/bin/activate
-   
-   # Install dependencies
+   # Setup Python environment
+   source activate
    pip install -r pip-venv-requirements.txt
    ```
 
-3. **Configure Ansible environment**
+2. **Configure Ansible environment**
 
    ```bash
    cd playbooks
    
-   # Install required collections
+   # Install collections
    ansible-galaxy collection install -r galaxy-requirements.yaml
    
    # Setup configuration
@@ -73,32 +63,48 @@ storing data in MongoDB with intelligent caching for analysis and reporting.
    cp inventory.example inventory
    ```
 
-4. **Start MongoDB (if running locally)**
+3. **Start MongoDB and configure inventory**
 
    ```bash
-   # Using Docker (recommended)
+   # Docker (recommended)
    docker run -d -p 27017:27017 --name ansible-discovery-mongo mongo:latest
    
-   # Or start local MongoDB service
-   sudo systemctl start mongod
-   ```
-
-5. **Configure target servers**
-
-   ```bash
    # Edit inventory with your target servers
    nano inventory
    ```
 
 ## Usage
 
-### Available Discovery Tags
+```bash
+# Single collector (absolute precedence)
+ansible-playbook discovery.yaml -e collector_only=java
 
-The discovery playbook supports granular execution through tags,
-allowing you to run specific discovery modules:
+# All collectors (default behavior)
+ansible-playbook discovery.yaml
 
-| Tag | Description | Scope | Output |
-|-----|-------------|-------|--------|
+# Individual collector control (when collector_only not used)
+ansible-playbook discovery.yaml -e collector_packages=false
+```
+
+### Collector Selection
+
+The discovery system uses a selective collection approach with absolute precedence:
+
+```bash
+# Single collector (absolute precedence)
+ansible-playbook discovery.yaml -e collector_only=java
+
+# All collectors (default behavior)  
+ansible-playbook discovery.yaml
+
+# Individual collector control (when collector_only not used)
+ansible-playbook discovery.yaml -e collector_packages=false
+```
+
+### System Collectors
+
+| Collector | Description | Scope | Output |
+|-----------|-------------|-------|--------|
 | `packages` | Installed packages | All hosts | Package inventory with versions |
 | `services` | System services | All hosts | Service status and configuration |
 | `ports` | Network ports | All hosts | Listening ports and processes |
@@ -107,74 +113,89 @@ allowing you to run specific discovery modules:
 | `selinux` | SELinux status | All hosts | SELinux mode and policies |
 | `blockdev` | Block devices | All hosts | Disk and filesystem information |
 | `java` | Java applications | Java hosts | Tomcat, JBoss, JAR discovery |
-| `tomcat` | Tomcat servers | Tomcat hosts | Tomcat instances and configurations |
-| `jboss` | JBoss/Wildfly | JBoss hosts | JBoss deployments and settings |
-| `jar` | Standalone JARs | Java hosts | JAR files and manifest info |
+| `apache` | Apache servers | Apache hosts | Virtual hosts and configuration |
+| `nginx` | Nginx servers | Nginx hosts | Server blocks and upstreams |
 
-> **Note**: Web server discovery (`webservers` tag) is currently disabled.
-> To enable it, uncomment the relevant section in `discovery.yaml`.
-
-### Basic Usage Examples
+### Basic Examples
 
 ```bash
-# Full infrastructure discovery (all tags)
-ansible-playbook -i inventory discovery.yaml
+# Full discovery (all collectors)
+ansible-playbook discovery.yaml
 
-# System-only discovery (core facts + specific modules)
-ansible-playbook -i inventory discovery.yaml --tags "packages,services,ports"
+# System-only discovery
+ansible-playbook discovery.yaml -e collector_only=packages
 
 # Java applications only
-ansible-playbook -i inventory discovery.yaml --tags java
-
-# Specific Java application types
-ansible-playbook -i inventory discovery.yaml --tags "tomcat,jboss"
+ansible-playbook discovery.yaml -e collector_only=java
 
 # Network and security focus
-ansible-playbook -i inventory discovery.yaml --tags "ports,firewall,selinux"
-
-# Storage and system configuration
-ansible-playbook -i inventory discovery.yaml --tags "blockdev,bootloader,packages"
-```
-
-#### Advanced Usage
-
-```bash
-# Skip specific modules (discover everything except Java)
-ansible-playbook -i inventory discovery.yaml --skip-tags java
+ansible-playbook discovery.yaml -e collector_only=firewall
 
 # Debug mode with verbose logging
-ansible-playbook -i inventory discovery.yaml --tags java -e debug=true -e log=true
-
-# Dry run to see what would be discovered
-ansible-playbook -i inventory discovery.yaml --check --diff
-
-# Run on specific host group
-ansible-playbook -i inventory discovery.yaml --limit java_servers --tags java
+ansible-playbook discovery.yaml -e debug=true -e log=true
 ```
 
-## Recent Features
+### Advanced Usage
+
+```bash
+# Run on specific host group
+ansible-playbook discovery.yaml --limit java_servers -e collector_only=java
+
+# Dry run to see what would be discovered
+ansible-playbook discovery.yaml --check --diff
+
+# Multiple collectors (without collector_only)
+ansible-playbook discovery.yaml -e collector_java=true -e collector_apache=true
+```
+
+## Architecture
+
+### Collection Strategy
+
+The system follows a hybrid approach:
+
+1. **Official Roles First**: Attempts to use `fedora.linux_system_roles` modules
+2. **Manual Fallback**: Uses shell commands with JSON parsing when official roles fail
+3. **Container Detection**: Automatically adjusts for containerized environments
+4. **Graceful Degradation**: Provides meaningful fallback data when tools are unavailable
+
+### Discovery Pipeline
+
+```text
+discovery.yaml → prereqs.yaml (variables) → process_facts → 
+collectors/* (conditional) → java/apache/nginx (process-based)
+```
+
+### Data Structure
+
+All collectors produce structured JSON output with consistent fields:
+
+```json
+{
+  "source": "fedora.linux_system_roles|manual|container",
+  "status": "active|inactive|unknown", 
+  "note": "additional_context_when_applicable"
+}
+```
+
+## Key Features
 
 ### Custom Ansible Filters
 
-The project includes custom filters for enhanced file operations:
+Enhanced file operations with custom filters:
 
 - **`file_exists`**: Check if a specific file exists (returns boolean)
-- **`path_exists`**: Check if a path exists (file or directory)
+- **`path_exists`**: Check if a path exists (file or directory)  
 - **`file_readable`**: Check if a file exists and is readable by current user
 
 ```yaml
-# Example usage in playbooks
-- name: Check if Tomcat JAR exists
+# Example usage in discovery
+- name: Check if Tomcat config exists
   debug:
-    msg: "Tomcat found at {{ tomcat_path }}"
-  when: tomcat_path | file_exists
+    msg: "Tomcat found at {{ tomcat_home }}"
+  when: "{{ tomcat_home }}/conf/server.xml" | file_exists
 
-- name: Verify configuration directory
-  debug:
-    msg: "Config dir exists"
-  when: "/etc/httpd/conf.d" | path_exists
-
-- name: Process only accessible config files
+- name: Process only readable config files
   include_tasks: process_config.yaml
   when: item | file_readable
   loop: "{{ config_files }}"
@@ -186,25 +207,26 @@ The project includes custom filters for enhanced file operations:
 
 Advanced process analysis with structured JSON output:
 
-- **AWK-based parsing**: Converts `ps` output to structured data
-- **Application detection**: Identifies Tomcat, JBoss, web servers
-- **PID-based mapping**: Efficient process-to-application correlation
+- **Process Detection**: Identifies Java applications, web servers by command line patterns
+- **PID-based Mapping**: Efficient process-to-application correlation
+- **Container Awareness**: Automatic detection and handling of containerized processes
 
 ### MongoDB Caching with TTL
 
 All discovered facts are cached in MongoDB with configurable TTL:
 
 - **Performance**: Avoid re-discovery on subsequent runs
-- **Persistence**: Data survives across playbook executions  
+- **Persistence**: Data survives across playbook executions
 - **Flexibility**: TTL=0 for infinite cache (current default)
 
-### VS Code Integration
+### Cross-Platform Support
 
-Project includes VS Code workspace configuration:
+Hybrid collection strategy ensures compatibility:
 
-- **Auto-close tabs**: Deleted files close automatically
-- **Python interpreter**: Pre-configured for Ansible development
-- **Session management**: Prevents file restoration issues
+- **Primary**: Uses official `fedora.linux_system_roles` when available
+- **Fallback**: Shell commands with JSON parsing for older systems
+- **Container**: Automatic detection and adjusted behavior
+- **Distributions**: RHEL, Debian, SUSE support with unified output
 
 ## 🛠 Development Environment
 
@@ -217,22 +239,15 @@ Project includes VS Code workspace configuration:
    cd ansible-discovery
    ```
 
-2. **Install development dependencies**
+1. **Install development dependencies**
 
    ```bash
-   # Install UV package manager (recommended)
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   
-   # Create isolated Python environment
-   uv python install 3.9
-   uv venv --python 3.9
-   source .venv/bin/activate
-   
-   # Install project dependencies
+   # Setup Python environment
+   source activate
    pip install -r pip-venv-requirements.txt
    ```
 
-3. **Setup Ansible environment**
+1. **Setup Ansible environment**
 
    ```bash
    cd playbooks
@@ -243,12 +258,9 @@ Project includes VS Code workspace configuration:
    # Setup configuration files
    cp ansible.cfg.example ansible.cfg
    cp inventory.example inventory
-   
-   # Ensure filter plugins are enabled
-   echo "filter_plugins = ./filter_plugins" >> ansible.cfg
    ```
 
-4. **Configure development tools**
+1. **Configure development tools**
 
    ```bash
    # Install markdown linting (optional)
@@ -258,13 +270,12 @@ Project includes VS Code workspace configuration:
    pip install flake8 pylint black
    ```
 
-5. **VS Code setup (recommended)**
+1. **VS Code setup (recommended)**
 
    Install required extensions:
 
    - [Red Hat Ansible](https://marketplace.visualstudio.com/items?itemName=redhat.ansible)
    - [Jinja HTML](https://marketplace.visualstudio.com/items?itemName=samuelcolvin.jinjahtml)
-   - [Local History](https://marketplace.visualstudio.com/items?itemName=xyz.local-history)
 
    ```bash
    # Open project in VS Code
@@ -279,60 +290,51 @@ Project includes VS Code workspace configuration:
 # Validate playbook syntax
 ansible-playbook --syntax-check discovery.yaml
 
-# Test specific discovery modules
-ansible-playbook -i inventory discovery.yaml --tags java --check
+# Test selective collection
+ansible-playbook discovery.yaml -e collector_only=java --check
 
-# Run with debug output for troubleshooting
-ansible-playbook -i inventory discovery.yaml -e debug=true -e log=true
+# Run with debug output
+ansible-playbook discovery.yaml -e debug=true -e log=true
 ```
 
 #### Custom Filter Testing
 
-Test the custom file operation filters:
-
 ```bash
-# Test file_exists filter
+# Test individual filters
 ansible localhost -m debug -a "msg={{ '/etc/passwd' | file_exists }}"
-
-# Test path_exists filter  
 ansible localhost -m debug -a "msg={{ '/tmp' | path_exists }}"
-
-# Test file_readable filter
-ansible localhost -m debug -a "msg={{ '/etc/passwd' | file_readable }}"
-
-# Test with non-existent file
-ansible localhost -m debug -a "msg={{ '/nonexistent' | file_exists }}"
-
-# Test with unreadable file (like /etc/shadow)
 ansible localhost -m debug -a "msg={{ '/etc/shadow' | file_readable }}"
 
 # Run comprehensive filter tests
 ansible-playbook filter_plugins/tests/test_file_utils.yaml
-
-# Or use the test runner script
 ./filter_plugins/tests/run_tests.sh
+```
+
+#### Cache Management
+
+```bash
+# List cached hosts
+./scripts/manage-cache.sh --list
+
+# Clear all cache
+./scripts/clear-cache-simple.sh
+
+# Clear cache for specific hosts
+./scripts/manage-cache.sh server1.example.com server2.example.com
+
+# Force clear all cache (automation)
+./scripts/clear-cache-simple.sh --force
 ```
 
 #### Performance Testing
 
 ```bash
 # Time discovery execution
-time ansible-playbook -i inventory discovery.yaml
+time ansible-playbook discovery.yaml
 
-# Compare with and without MongoDB caching
-ansible-playbook -i inventory discovery.yaml --tags always  # First run
-time ansible-playbook -i inventory discovery.yaml --tags always  # Cached run
-```
-
-#### Integration Testing
-
-```bash
-# Test MongoDB connection and caching
-ansible-playbook -i inventory discovery.yaml --tags packages
-mongo --eval "db.ansible_facts.find().limit(1).pretty()"
-
-# Test tag combinations
-ansible-playbook -i inventory discovery.yaml --tags "java,webservers" --check
+# Test MongoDB caching
+ansible-playbook discovery.yaml -e collector_only=packages  # First run
+time ansible-playbook discovery.yaml -e collector_only=packages  # Cached run
 ```
 
 ### Project Structure
@@ -340,36 +342,49 @@ ansible-playbook -i inventory discovery.yaml --tags "java,webservers" --check
 ```text
 ansible-discovery/
 ├── playbooks/
-│   ├── discovery.yaml          # Main discovery playbook
-│   ├── ansible.cfg            # Ansible configuration
-│   ├── galaxy-requirements.yaml # Required collections
+│   ├── discovery.yaml          # Main discovery orchestrator
+│   ├── prereqs.yaml           # Collection variables configuration
+│   ├── collectors/            # Discovery modules
+│   │   ├── packages.yaml      # Package discovery
+│   │   ├── services.yaml      # Service discovery
+│   │   ├── ports.yaml         # Network ports discovery
+│   │   ├── firewall.yaml      # Firewall rules discovery
+│   │   ├── bootloader.yaml    # Bootloader discovery
+│   │   ├── selinux.yaml       # SELinux discovery
+│   │   ├── blockdev.yaml      # Block device discovery
+│   │   ├── apache.yaml        # Apache discovery
+│   │   ├── nginx.yaml         # Nginx discovery
+│   │   └── java/              # Java application discovery
+│   │       ├── java.yaml      # Java orchestrator
+│   │       ├── tomcat.yaml    # Tomcat discovery
+│   │       ├── jboss.yaml     # JBoss/Wildfly discovery
+│   │       └── jar.yaml       # JAR discovery
 │   ├── filter_plugins/        # Custom Ansible filters
 │   │   ├── file_utils.py      # File operation filters
 │   │   ├── README.md          # Filter documentation
-│   │   └── tests/             # Filter plugin tests
-│   │       ├── test_file_utils.yaml  # Comprehensive filter tests
-│   │       ├── run_tests.sh   # Test runner script
-│   │       └── README.md      # Test documentation
-│   ├── java/                  # Java application discovery
-│   │   ├── java.yaml          # Main Java discovery
-│   │   ├── tomcat.yaml        # Tomcat-specific discovery
-│   │   ├── jboss.yaml         # JBoss/Wildfly discovery
-│   │   └── jar.yaml           # Standalone JAR discovery
-│   ├── webservers/            # Web server discovery
-│   │   └── webservers.yaml    # Apache/Nginx discovery
-│   ├── test/                  # Test playbooks
-│   │   └── tomcat.yaml        # Tomcat testing
-│   ├── collections/           # Downloaded Ansible collections
-│   ├── inventory.example      # Example inventory file
-│   └── ansible.cfg.example    # Example configuration
-├── tests/                     # Unit and integration tests
-├── mongodbdata/              # MongoDB data directory (ignored)
-├── .vscode/                  # VS Code workspace configuration
-├── .markdownlint.yaml        # Markdown linting rules
-├── .gitignore                # Git ignore patterns
-├── README.md                 # This documentation
-├── LICENSE                   # Project license
-└── pip-venv-requirements.txt # Python dependencies
+│   │   └── tests/             # Filter tests
+│   ├── ansible.cfg            # Ansible configuration
+│   ├── galaxy-requirements.yaml # Required collections
+│   ├── inventory.example      # Example inventory
+│   └── collections/           # Downloaded collections
+├── scripts/                  # Cache management utilities
+│   ├── clear-cache-simple.sh  # Simple cache cleanup
+│   ├── clear-cache.sh         # Advanced cache cleanup  
+│   ├── manage-cache.sh        # Selective cache management
+│   └── README.md              # Script documentation
+├── mongodbdata/              # MongoDB data (ignored)
+│   ├── filter_plugins/        # Custom Ansible filters
+│   │   ├── file_utils.py      # File operation filters
+│   │   ├── README.md          # Filter documentation
+│   │   └── tests/             # Filter tests
+│   ├── ansible.cfg            # Ansible configuration
+│   ├── galaxy-requirements.yaml # Required collections
+│   ├── inventory.example      # Example inventory
+│   └── collections/           # Downloaded collections
+├── mongodbdata/              # MongoDB data (ignored)
+├── activate                  # Python environment activation
+├── pip-venv-requirements.txt # Python dependencies
+└── README.md                 # This documentation
 ```
 
 ## Configuration
@@ -381,40 +396,35 @@ Edit `playbooks/ansible.cfg`:
 ```ini
 [defaults]
 fact_caching = community.mongodb.mongodb
-fact_caching_timeout = 3600
-fact_caching_connection = mongodb://localhost:27017
+fact_caching_timeout = 0
+fact_caching_connection = mongodb://localhost:27017/ansible
 ```
 
 #### TTL Configuration Options
 
-- **`fact_caching_timeout = 0`**: Infinite TTL (facts never expire)
-- **`fact_caching_timeout = 3600`**: 1 hour TTL (default)
+- **`fact_caching_timeout = 0`**: Infinite TTL (facts never expire) - current default
+- **`fact_caching_timeout = 3600`**: 1 hour TTL
 - **`fact_caching_timeout = 86400`**: 1 day TTL
 - **`fact_caching_timeout = 604800`**: 1 week TTL
 
-**Note**: With infinite TTL (`0`), you may need to manually clean old data:
-
-```bash
-# Connect to MongoDB and clean old data
-mongo
-use ansible_facts
-db.ansible_facts.drop()
-```
-
 ### Discovery Options
 
-Available tags for selective execution:
+Available collector parameters for selective execution:
 
-- `packages`: Installed packages
-- `services`: System services
-- `ports`: Network ports
-- `processes`: Running processes
-- `java`: Java applications
-- `webservers`: Apache/Nginx
-- `tomcat`: Tomcat specific
-- `jboss`: JBoss/Wildfly specific
+```bash
+# Single collector (absolute precedence)
+ansible-playbook discovery.yaml -e collector_only=packages
+
+# Multiple collectors (when collector_only not used)
+ansible-playbook discovery.yaml -e collector_java=true -e collector_apache=true
+
+# Debug and logging
+ansible-playbook discovery.yaml -e debug=true -e log=true
+```
 
 ## Contributing
+
+### Development Workflow
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature-name`
@@ -424,40 +434,12 @@ Available tags for selective execution:
 
 ### Code Guidelines
 
-- Use descriptive task names
-- Add tags for modular execution
-- Include debug tasks when `debug=true`
-- Use `no_log` for sensitive data when `log=false`
-- Follow Ansible best practices
-- Document new discovery modules
-
-## Roadmap
-
-- [ ] Docker/Podman container discovery
-- [ ] Python/Ruby/PHP process detection
-- [ ] Grafana dashboard integration
-- [ ] Enhanced Tomcat webapp analysis
-- [ ] Virtual host configuration export
-- [ ] Performance metrics collection
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow these guidelines:
-
-### Code Quality Standards
-
-- **Python**: Follow PEP 8, use type hints, include docstrings
-- **Ansible**: Use YAML format (.yaml), follow naming conventions
-- **Markdown**: Pass markdownlint validation
-- **Git**: Use conventional commit messages
-
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- Use descriptive task names in playbooks
+- Include `cacheable: true` for important facts
+- Use `no_log: "{{ not log }}"` for verbose output
+- Follow hybrid collection pattern (official + fallback)
+- Add container detection where applicable
+- Document new collectors with examples
 
 ### Testing
 
@@ -468,10 +450,10 @@ Before submitting:
 ansible-playbook --syntax-check discovery.yaml
 
 # Test custom filters
-ansible localhost -m debug -a "msg={{ '/etc/passwd' | file_exists }}"
+ansible-playbook filter_plugins/tests/test_file_utils.yaml
 
-# Check markdown formatting
-markdownlint README.md
+# Test selective collection
+ansible-playbook discovery.yaml -e collector_only=packages --check
 ```
 
 ## 📄 License
@@ -481,12 +463,11 @@ This project is licensed under the [MIT License](LICENSE).
 ## 🆘 Support
 
 - **Issues**: [GitHub Issues](https://github.com/andrewlinuxadmin/ansible-discovery/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/andrewlinuxadmin/ansible-discovery/discussions)
 - **Documentation**: This README and inline code comments
 
 ## 🙏 Acknowledgments
 
 - Built with [Ansible](https://www.ansible.com/)
 - MongoDB integration via [community.mongodb](https://galaxy.ansible.com/community/mongodb)
-- Process analysis powered by AWK and shell scripting
-- Inspired by infrastructure automation best practices
+- Hybrid collection using [fedora.linux_system_roles](https://galaxy.ansible.com/fedora/linux_system_roles)
+- Process analysis powered by custom modules and shell scripting

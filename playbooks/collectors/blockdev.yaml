@@ -1,0 +1,73 @@
+# Block device collection tasks for Ansible Discovery
+# This file contains tasks for collecting block device information
+# with fallback support for different environments
+
+- name: Try to collect block device facts using fedora.linux_system_roles
+  fedora.linux_system_roles.blockdev_info: {}
+  register: blockdev_collection_result
+  ignore_errors: true
+
+- name: Collect block device information using shell commands
+  ansible.builtin.shell: |
+    # Simple block device detection script
+    if command -v lsblk >/dev/null 2>&1; then
+      # Use lsblk to get basic block device info
+      devices=$(lsblk -J 2>/dev/null | grep -o '"name":"[^"]*"' | wc -l || echo "0")
+      if [ "$devices" -gt 0 ]; then
+        # Get basic info about mounted filesystems
+        mounted=$(df -h 2>/dev/null | grep -v "Filesystem\|tmpfs\|udev" | wc -l || echo "0")
+        echo "{\"blockdev\":\"available\",\"devices_count\":$devices,\"mounted_count\":$mounted,\"source\":\"manual\"}"
+      else
+        echo '{"blockdev":"no_devices","note":"no_block_devices_detected","source":"manual"}'
+      fi
+    elif command -v fdisk >/dev/null 2>&1; then
+      # Fallback to fdisk
+      devices=$(fdisk -l 2>/dev/null | grep "Disk /" | wc -l || echo "0")
+      echo "{\"blockdev\":\"available\",\"devices_count\":$devices,\"source\":\"manual_fdisk\"}"
+    elif [ -f /.dockerenv ] || grep -q "docker\|lxc\|podman" /proc/1/cgroup 2>/dev/null; then
+      echo '{"blockdev":"container","note":"block_devices_managed_by_host","source":"manual"}'
+    else
+      echo '{"blockdev":"not_available","note":"no_tools_detected","source":"manual"}'
+    fi
+  args:
+    executable: /bin/bash
+  register: blockdev_manual
+  when:
+    - blockdev_collection_result is failed
+  failed_when: false
+  changed_when: false
+  no_log: "{{ not log | default(false) }}"
+
+- name: Parse manual block device collection results
+  ansible.builtin.set_fact:
+    manual_blockdev_parsed: "{{ blockdev_manual.stdout | from_json }}"
+  when:
+    - blockdev_manual is defined
+    - blockdev_manual.stdout is defined
+    - blockdev_manual.stdout | length > 0
+    - "'blockdev' in blockdev_manual.stdout"
+
+- name: Set block device facts from fedora.linux_system_roles collection
+  ansible.builtin.set_fact:
+    blockdev_info: "{{ blockdev_collection_result }}"
+    cacheable: true
+  when:
+    - blockdev_collection_result is succeeded
+    - blockdev_collection_result is not skipped
+
+- name: Set block device facts from shell collection
+  ansible.builtin.set_fact:
+    blockdev_info: "{{ manual_blockdev_parsed }}"
+    cacheable: true
+  when:
+    - manual_blockdev_parsed is defined
+
+- name: Initialize empty block device facts if not detected
+  ansible.builtin.set_fact:
+    blockdev_info:
+      blockdev: "not_available"
+      status: "not_detected"
+      source: "fallback"
+    cacheable: true
+  when:
+    - blockdev_info is not defined

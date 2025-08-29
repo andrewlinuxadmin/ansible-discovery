@@ -1,0 +1,135 @@
+# Firewall collection tasks for Ansible Discovery
+# This file contains tasks for collecting firewall information
+# with fallback support for different firewall systems
+
+- name: Try to collect firewall facts using fedora.linux_system_roles
+  fedora.linux_system_roles.firewall_lib_facts:
+  register: firewall_collection_result
+  ignore_errors: true
+  changed_when: false
+
+- name: Collect firewall information using shell commands
+  ansible.builtin.shell: |
+    # Simple firewall detection script
+    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
+      echo '{"firewall":"firewalld","status":"active","source":"manual"}'
+    elif command -v firewall-cmd >/dev/null 2>&1; then
+      echo '{"firewall":"firewalld","status":"inactive","source":"manual"}'
+    elif command -v ufw >/dev/null 2>&1; then
+      status=$(ufw status 2>/dev/null | head -1 | awk '{print tolower($2)}' || echo "unknown")
+      echo "{\"firewall\":\"ufw\",\"status\":\"$status\",\"source\":\"manual\"}"
+    elif command -v nft >/dev/null 2>&1; then
+      tables=$(nft list tables 2>/dev/null | wc -l || echo "0")
+      echo "{\"firewall\":\"nftables\",\"tables_count\":$tables,\"source\":\"manual\"}"
+    elif command -v iptables >/dev/null 2>&1; then
+      if iptables -L -n >/dev/null 2>&1; then
+        echo '{"firewall":"iptables","status":"active","source":"manual"}'
+      else
+        echo '{"firewall":"iptables","status":"kernel_modules_unavailable","note":"typical_in_containers","source":"manual"}'
+      fi
+    elif [ -f /.dockerenv ] || grep -q "docker\|lxc\|podman" /proc/1/cgroup 2>/dev/null; then
+      echo '{"firewall":"container","note":"firewall_managed_by_host","source":"manual"}'
+    else
+      echo '{"firewall":"none","note":"no_firewall_detected","source":"manual"}'
+    fi
+  args:
+    executable: /bin/bash
+  register: firewall_manual
+  when:
+    - firewall_collection_result is failed
+  failed_when: false
+  changed_when: false
+  no_log: "{{ not log | default(false) }}"
+
+- name: Parse manual firewall collection results
+  ansible.builtin.set_fact:
+    manual_firewall_parsed: "{{ firewall_manual.stdout | from_json }}"
+  when:
+    - firewall_manual is defined
+    - firewall_manual.stdout is defined
+    - firewall_manual.stdout | length > 0
+    - "'firewall' in firewall_manual.stdout"
+
+- name: Set firewall facts from fedora.linux_system_roles collection
+  ansible.builtin.set_fact:
+    firewall_info: "{{ firewall_collection_result.firewall_config }}"
+    cacheable: true
+  when:
+    - firewall_collection_result is succeeded
+    - firewall_collection_result is not skipped
+    - firewall_collection_result.firewall_config is defined
+
+- name: Set firewall facts from shell collection
+  ansible.builtin.set_fact:
+    firewall_info: "{{ manual_firewall_parsed }}"
+    cacheable: true
+  when:
+    - manual_firewall_parsed is defined
+
+# ==================== IPTABLES RULES COLLECTION ====================
+
+- name: Collect iptables rules when iptables is active
+  when:
+    - firewall_info is defined
+    - firewall_info.firewall is defined
+    - firewall_info.firewall == "iptables"
+    - firewall_info.status is defined
+    - firewall_info.status == "active"
+  block:
+    - name: Create temporary directory for iptables rules
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: _iptables_rules
+      register: iptables_temp_dir
+      changed_when: false
+
+    - name: Save current iptables rules to file using community.general.iptables_state
+      community.general.iptables_state:
+        state: saved
+        path: "{{ iptables_temp_dir.path }}/iptables-rules.dump"
+      register: iptables_save_result
+      failed_when: false
+      changed_when: false
+
+    - name: Read iptables rules file content
+      ansible.builtin.slurp:
+        src: "{{ iptables_temp_dir.path }}/iptables-rules.dump"
+      register: iptables_rules_content
+      when: iptables_save_result is succeeded
+      changed_when: false
+
+    - name: Set iptables rules as fact
+      ansible.builtin.set_fact:
+        iptables_rules: "{{ iptables_rules_content.content | b64decode }}"
+        cacheable: true
+      when:
+        - iptables_save_result is succeeded
+        - iptables_rules_content is defined
+      changed_when: false
+
+    - name: Clean up temporary directory
+      ansible.builtin.file:
+        path: "{{ iptables_temp_dir.path }}"
+        state: absent
+      when: iptables_temp_dir is defined
+      changed_when: false
+
+    - name: Debug iptables rules (if enabled)
+      ansible.builtin.debug:
+        msg: |
+          Iptables rules collected successfully.
+          Rules saved as 'iptables_rules' fact.
+          Preview (first 500 chars): {{ iptables_rules[:500] | default('No rules collected') }}
+      when:
+        - debug | default(false)
+        - iptables_rules is defined
+
+- name: Initialize empty firewall facts if no firewall detected
+  ansible.builtin.set_fact:
+    firewall_info:
+      firewall: "none"
+      status: "not_detected"
+      source: "fallback"
+    cacheable: true
+  when:
+    - firewall_info is not defined

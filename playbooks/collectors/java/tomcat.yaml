@@ -11,6 +11,8 @@
     fi
     TOMCAT_VERSION="$(echo "$TOMCAT_VERSION" | xargs)"
     echo "{\"{{ item.pid }}\": {\"version\": \"$TOMCAT_VERSION\"}}"
+  args:
+    executable: /bin/bash
   loop: "{{ java_processes_raw }}"
   when: item.type == 'tomcat'
   register: tomcat_info_shell
@@ -181,6 +183,8 @@
       fi
     done
     echo "{\"{{ item.pid }}\": \"$found\"}"
+  args:
+    executable: /bin/bash
   register: tomcat_manager_address_raw
   changed_when: false
   when: item.type == 'tomcat'
@@ -217,6 +221,8 @@
       ' | base64 -w0)
     fi
     echo "{\"{{ item.pid }}\": \"$RESULT\"}"
+  args:
+    executable: /bin/bash
   register: tomcat_deployments_script_raw
   when:
     - item.type == 'tomcat'

@@ -21,6 +21,8 @@
       \"management_ip\": \"{{ management_ip }}\",
       \"ports\": \"$JBOSS_PORTS\"}
     }"
+  args:
+    executable: /bin/bash
   vars:
     management_ip: "{{ (item.cmd | regex_search('-bmanagement[= ]([0-9.]+)', '\\1'))[0] | default('127.0.0.1') }}"
   loop: "{{ java_processes_raw }}"
@@ -71,6 +73,8 @@
       \"type\": \"$JBOSS_TYPE\",
       \"version\": \"$JBOSS_VERSION\"}
     }"
+  args:
+    executable: /bin/bash
   vars:
     cli_port: "{{ jboss_cli_port[item.pid]['cli_port'] }}"
     management_ip: "{{ jboss_cli_port[item.pid]['management_ip'] }}"
@@ -114,6 +118,8 @@
       --connect "controller={{ management_ip }}:{{ cli_port }}" \
       --output-json \
       --command=/deployment='*/:read-resource(include-runtime=true,include-defaults=true)' 2>/dev/null || echo "{}"
+  args:
+    executable: /bin/bash
   vars:
     cli_port: "{{ jboss_cli_port[item.pid]['cli_port'] }}"
     management_ip: "{{ jboss_cli_port[item.pid]['management_ip'] }}"

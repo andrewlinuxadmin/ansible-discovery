@@ -1,0 +1,92 @@
+# Bootloader collection tasks for Ansible Discovery
+# This file contains tasks for collecting bootloader information
+# with fallback support for systems without fedora.linux_system_roles
+
+- name: Collect bootloader facts using fedora.linux_system_roles
+  fedora.linux_system_roles.bootloader_facts: {}
+  failed_when: false
+  register: bootloader_collection_result
+
+- name: Fallback - Collect bootloader info manually
+  ansible.builtin.shell: |
+    # Try different bootloader detection methods
+    bootloader_info="{\"bootloader\":\"unknown\",\"entries\":[],\"source\":\"manual\"}"
+
+    # Check for GRUB2
+    if [ -f /boot/grub2/grub.cfg ] || [ -f /boot/grub/grub.cfg ]; then
+      bootloader_type="grub2"
+      config_file=""
+      if [ -f /boot/grub2/grub.cfg ]; then
+        config_file="/boot/grub2/grub.cfg"
+      elif [ -f /boot/grub/grub.cfg ]; then
+        config_file="/boot/grub/grub.cfg"
+      fi
+
+      # Extract menu entries from grub config
+      if [ -n "$config_file" ] && [ -r "$config_file" ]; then
+        entries=$(grep "^menuentry" "$config_file" 2>/dev/null | head -5 | \
+                 sed 's/menuentry ['\''\"]\([^'\''\"]*\)['\''\"]/\1/' | \
+                 awk '{printf "\"%s\",", $0}' | sed 's/,$//')
+        bootloader_info="{\"bootloader\":\"$bootloader_type\",\"config\":\"$config_file\",\"entries\":[$entries],\"source\":\"manual\"}"
+      else
+        bootloader_info="{\"bootloader\":\"$bootloader_type\",\"config\":\"$config_file\",\"entries\":[],\"source\":\"manual\"}"
+      fi
+
+    # Check for GRUB Legacy
+    elif [ -f /boot/grub/menu.lst ] || [ -f /boot/grub/grub.conf ]; then
+      bootloader_type="grub"
+      config_file=""
+      if [ -f /boot/grub/menu.lst ]; then
+        config_file="/boot/grub/menu.lst"
+      elif [ -f /boot/grub/grub.conf ]; then
+        config_file="/boot/grub/grub.conf"
+      fi
+      bootloader_info="{\"bootloader\":\"$bootloader_type\",\"config\":\"$config_file\",\"entries\":[],\"source\":\"manual\"}"
+
+    # Check for LILO
+    elif [ -f /etc/lilo.conf ]; then
+      bootloader_info="{\"bootloader\":\"lilo\",\"config\":\"/etc/lilo.conf\",\"entries\":[],\"source\":\"manual\"}"
+
+    # Check for systemd-boot
+    elif [ -d /boot/loader/entries ]; then
+      entries=$(ls /boot/loader/entries/*.conf 2>/dev/null | head -5 | \
+               xargs -I {} basename {} .conf | \
+               awk '{printf "\"%s\",", $0}' | sed 's/,$//')
+      bootloader_info="{\"bootloader\":\"systemd-boot\",\"config\":\"/boot/loader\",\"entries\":[$entries],\"source\":\"manual\"}"
+
+    # Container or unknown
+    else
+      # Check multiple container indicators
+      if [ -f /.dockerenv ] || \
+         grep -q "docker\|lxc\|podman\|containerd" /proc/1/cgroup 2>/dev/null || \
+         [ "$(ps -p 1 -o comm= 2>/dev/null)" = "sleep" ] || \
+         [ ! -d /boot ]; then
+        bootloader_info="{\"bootloader\":\"container\",\"config\":\"none\",\"entries\":[],\"source\":\"manual\"}"
+      fi
+    fi
+
+    echo "$bootloader_info"
+  args:
+    executable: /bin/bash
+  register: bootloader_manual
+  when:
+    - bootloader_collection_result is failed or ansible_facts.bootloader is not defined
+  failed_when: false
+  changed_when: false
+  no_log: "{{ not log | default(false) }}"
+
+- name: Parse manual bootloader collection results
+  ansible.builtin.set_fact:
+    manual_bootloader_parsed: "{{ bootloader_manual.stdout | from_json }}"
+  when:
+    - bootloader_manual is defined
+    - bootloader_manual.stdout is defined
+    - bootloader_manual.stdout | length > 0
+
+- name: Set bootloader facts from manual collection
+  ansible.builtin.set_fact:
+    bootloader_info: "{{ manual_bootloader_parsed }}"
+    cacheable: true
+  when:
+    - bootloader_collection_result is failed or ansible_facts.bootloader is not defined
+    - manual_bootloader_parsed is defined

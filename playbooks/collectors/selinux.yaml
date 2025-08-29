@@ -1,0 +1,83 @@
+# SELinux collection tasks for Ansible Discovery
+# This file contains tasks for collecting SELinux information
+# with fallback support for different environments
+
+- name: Try to collect SELinux facts using fedora.linux_system_roles
+  fedora.linux_system_roles.selinux_modules_facts: {}
+  register: selinux_collection_result
+  ignore_errors: true
+
+- name: Collect SELinux information using shell commands
+  ansible.builtin.shell: |
+    # Simple SELinux detection script
+    if command -v getenforce >/dev/null 2>&1; then
+      status=$(getenforce 2>/dev/null || echo "unknown")
+      if command -v sestatus >/dev/null 2>&1; then
+        # Get additional info from sestatus
+        mode=$(sestatus 2>/dev/null | grep "Current mode" | awk '{print $3}' || echo "unknown")
+        policy=$(sestatus 2>/dev/null | grep "Loaded policy name" | awk '{print $4}' || echo "unknown")
+        echo "{\"selinux\":\"installed\",\"status\":\"$status\",\"mode\":\"$mode\",\"policy\":\"$policy\",\"source\":\"manual\"}"
+      else
+        echo "{\"selinux\":\"installed\",\"status\":\"$status\",\"source\":\"manual\"}"
+      fi
+    elif [ -f /selinux/enforce ] || [ -f /sys/fs/selinux/enforce ]; then
+      # Check for SELinux filesystem
+      if [ -f /selinux/enforce ]; then
+        enforce_file="/selinux/enforce"
+      else
+        enforce_file="/sys/fs/selinux/enforce"
+      fi
+      enforce_value=$(cat "$enforce_file" 2>/dev/null || echo "unknown")
+      case "$enforce_value" in
+        "0") status="permissive" ;;
+        "1") status="enforcing" ;;
+        *) status="unknown" ;;
+      esac
+      echo "{\"selinux\":\"installed\",\"status\":\"$status\",\"source\":\"manual_filesystem\"}"
+    elif [ -f /.dockerenv ] || grep -q "docker\|lxc\|podman" /proc/1/cgroup 2>/dev/null; then
+      echo '{"selinux":"container","note":"selinux_managed_by_host","source":"manual"}'
+    else
+      echo '{"selinux":"not_installed","note":"selinux_not_detected","source":"manual"}'
+    fi
+  args:
+    executable: /bin/bash
+  register: selinux_manual
+  when:
+    - selinux_collection_result is failed
+  failed_when: false
+  changed_when: false
+  no_log: "{{ not log | default(false) }}"
+
+- name: Parse manual SELinux collection results
+  ansible.builtin.set_fact:
+    manual_selinux_parsed: "{{ selinux_manual.stdout | from_json }}"
+  when:
+    - selinux_manual is defined
+    - selinux_manual.stdout is defined
+    - selinux_manual.stdout | length > 0
+    - "'selinux' in selinux_manual.stdout"
+
+- name: Set SELinux facts from fedora.linux_system_roles collection
+  ansible.builtin.set_fact:
+    selinux_info: "{{ selinux_collection_result }}"
+    cacheable: true
+  when:
+    - selinux_collection_result is succeeded
+    - selinux_collection_result is not skipped
+
+- name: Set SELinux facts from shell collection
+  ansible.builtin.set_fact:
+    selinux_info: "{{ manual_selinux_parsed }}"
+    cacheable: true
+  when:
+    - manual_selinux_parsed is defined
+
+- name: Initialize empty SELinux facts if not detected
+  ansible.builtin.set_fact:
+    selinux_info:
+      selinux: "not_available"
+      status: "not_detected"
+      source: "fallback"
+    cacheable: true
+  when:
+    - selinux_info is not defined

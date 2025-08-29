@@ -1,0 +1,64 @@
+# Service collection tasks for Ansible Discovery
+# This file contains tasks for collecting service information
+# with fallback support for systems without proper service managers
+
+- name: Collect services using service_facts
+  ansible.builtin.service_facts: {}
+  failed_when: false
+  register: services_collection_result
+
+- name: Fallback - Collect services manually using chkconfig/systemctl
+  ansible.builtin.shell: |
+    # Try systemctl first (systemd), then chkconfig (sysv), then service (upstart)
+    if command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1; then
+      # SystemD
+      systemctl list-unit-files --type=service --no-pager --no-legend 2>/dev/null | \
+      awk '{printf "{\"name\":\"%s\",\"status\":\"%s\",\"source\":\"systemd\"}\n", $1, $2}' | head -50
+    elif command -v chkconfig >/dev/null 2>&1; then
+      # SysV Init
+      chkconfig --list 2>/dev/null | grep -v "xinetd based services" | \
+      awk '/[0-9]:on/ {printf "{\"name\":\"%s\",\"status\":\"enabled\",\"source\":\"sysv\"}\n", $1}
+           /[0-9]:off/ && !/[0-9]:on/ {printf "{\"name\":\"%s\",\"status\":\"disabled\",\"source\":\"sysv\"}\n", $1}' | head -50
+    elif command -v service >/dev/null 2>&1; then
+      # Upstart/Generic
+      service --status-all 2>/dev/null | \
+      awk '/\[.*\]/ {
+        status = ($2 == "+") ? "running" : "stopped"
+        gsub(/\[.*\]/, "", $0); gsub(/^[ \t]+|[ \t]+$/, "", $0)
+        if ($0 != "") printf "{\"name\":\"%s\",\"status\":\"%s\",\"source\":\"service\"}\n", $0, status
+      }' | head -50
+    else
+      echo "{\"error\":\"no_service_manager_available\"}"
+    fi
+  args:
+    executable: /bin/bash
+  register: services_manual
+  when:
+    - services_collection_result is skipped or ansible_facts.services is not defined
+  failed_when: false
+  changed_when: false
+  no_log: "{{ not log | default(false) }}"
+
+- name: Parse manual service collection results
+  ansible.builtin.set_fact:
+    manual_services_parsed: >-
+      {{
+        (services_manual.stdout_lines | default([]) |
+         select('match', '^{.*}$') |
+         map('from_json') |
+         list |
+         rejectattr('error', 'defined'))
+      }}
+  when:
+    - services_manual is defined
+    - services_manual.stdout_lines is defined
+    - services_manual.stdout_lines | length > 0
+
+- name: Set services facts from manual collection
+  ansible.builtin.set_fact:
+    services_list: "{{ manual_services_parsed | default([]) }}"
+    cacheable: true
+  when:
+    - services_collection_result is skipped or ansible_facts.services is not defined
+    - manual_services_parsed is defined
+    - manual_services_parsed | length > 0

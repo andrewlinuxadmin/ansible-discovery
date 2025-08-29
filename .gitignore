@@ -14,6 +14,7 @@ __pycache__/
 # Ansible generated files
 **/.ansible/
 **/.ansible_async/
+**/ansible-lint
 *.retry
 
 # IDE and editor files

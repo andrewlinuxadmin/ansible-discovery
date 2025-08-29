@@ -1,0 +1,99 @@
+- name: Apache commands
+  ansible.builtin.set_fact:
+    apache_defaults:
+      "RedHat":
+        command: "httpd"
+        config_dir: "/etc/httpd"
+        config_file: "/etc/httpd/conf/httpd.conf"
+      "Debian":
+        command: "apache2"
+        config_dir: "/etc/apache2"
+        config_file: "/etc/apache2/apache2.conf"
+      "Suse":
+        command: "apache2"
+        config_dir: "/etc/apache2"
+        config_file: "/etc/apache2/httpd.conf"
+  no_log: "{{ not log }}"
+
+- name: Apache commands
+  ansible.builtin.set_fact:
+    apache_commands: "{{ apache_defaults.values() | map(attribute='command') | list | unique }}"
+  no_log: "{{ not log }}"
+
+- name: Classify all Apache processes and build structured list
+  ansible.builtin.set_fact:
+    apache_all_processes_raw: >-
+      {{
+        apache_all_processes_raw | default([]) +
+        [{
+          'cmd': item.args,
+          'pid': item.pid,
+          'ppid': item.ppid,
+          'process_user': item.user,
+          'process_user_homedir': item.homedir,
+          'type': "apache",
+          'binary': item.args.split()[0],
+          'default_config_dir': apache_defaults[ansible_os_family].config_dir | default("unknown"),
+          'default_config_file': apache_defaults[ansible_os_family].config_file | default("unknown"),
+          'config_dir': config_dir_custom if config_dir_custom | length > 0 else apache_defaults[ansible_os_family].config_dir | default("unknown")
+        }]
+      }}
+  vars:
+    config_dir_custom: "{{ item.args | regex_search('-d\\s+([^ ]+)', '\\1') | default([]) }}"
+  loop: "{{ processes | selectattr('command', 'in', apache_commands) | list }}"
+  no_log: "{{ not log }}"
+
+- name: Debug apache_all_processes_raw
+  ansible.builtin.debug:
+    var: apache_all_processes_raw
+  when: debug
+
+- name: Find all Apache parent processes (multiple instances support)
+  ansible.builtin.set_fact:
+    apache_parent_pids: >-
+      {{
+        apache_parent_candidates if apache_parent_candidates | length > 0
+        else apache_standalone_processes
+      }}
+  vars:
+    # Todos os PIDs e PPIDs dos processos Apache
+    apache_pids: "{{ apache_all_processes_raw | map(attribute='pid') | list }}"
+    apache_ppids: "{{ apache_all_processes_raw | map(attribute='ppid') | unique | list }}"
+
+    # PIDs que são pais de outros processos Apache (instâncias com workers)
+    apache_parent_candidates: "{{ apache_ppids | intersect(apache_pids) }}"
+
+    # Processos Apache que não são filhos de outros Apache (standalone)
+    apache_standalone_processes: >-
+      {{
+        apache_all_processes_raw |
+        rejectattr('ppid', 'in', apache_pids) |
+        map(attribute='pid') | list
+      }}
+  when: apache_all_processes_raw | length > 0
+  no_log: "{{ not log }}"
+
+- name: Create Apache instances list with children PIDs
+  ansible.builtin.set_fact:
+    apache_processes_raw: []
+  when: apache_all_processes_raw | length > 0
+
+- name: Build each Apache instance with children PIDs
+  ansible.builtin.set_fact:
+    apache_processes_raw: >-
+      {{
+        apache_processes_raw + [
+          (apache_all_processes_raw | selectattr('pid', 'equalto', item) | first) |
+          combine({'children_pids': children_pids})
+        ]
+      }}
+  vars:
+    children_pids: "{{ apache_all_processes_raw | selectattr('ppid', 'equalto', item) | map(attribute='pid') | list }}"
+  loop: "{{ apache_parent_pids }}"
+  when: apache_all_processes_raw | length > 0 and apache_parent_pids | length > 0
+  no_log: "{{ not log }}"
+
+- name: Debug final apache_processes_raw
+  ansible.builtin.debug:
+    var: apache_processes_raw
+  # when: debug

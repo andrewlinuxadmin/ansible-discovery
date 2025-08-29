@@ -1,0 +1,307 @@
+- name: Extract Nginx server blocks from main config
+  ansible.builtin.shell: |
+    set -o pipefail
+    CONFIG_FILE="{{ item.config_file }}"
+    SERVER_BLOCKS="[]"
+
+    if [ -f "$CONFIG_FILE" ]; then
+      # Extract server blocks and server_name directives
+      SERVER_BLOCKS=$(awk '
+        BEGIN { in_server=0; server_count=0; print "[" }
+        /server[[:space:]]*{/ {
+          in_server=1;
+          server_name="unknown";
+          listen_port="unknown";
+          root_dir="unknown";
+          next;
+        }
+        in_server && /server_name/ {
+          gsub(/^[[:space:]]*server_name[[:space:]]+/, "");
+          gsub(/[[:space:]]*;[[:space:]]*$/, "");
+          server_name=$0;
+        }
+        in_server && /listen/ {
+          gsub(/^[[:space:]]*listen[[:space:]]+/, "");
+          gsub(/[[:space:]]*;[[:space:]]*$/, "");
+          listen_port=$0;
+        }
+        in_server && /root/ {
+          gsub(/^[[:space:]]*root[[:space:]]+/, "");
+          gsub(/[[:space:]]*;[[:space:]]*$/, "");
+          root_dir=$0;
+        }
+        in_server && /^[[:space:]]*}/ {
+          in_server=0;
+          if (server_count > 0) print ",";
+          printf "{\"server_name\": \"%s\", \"listen\": \"%s\", \"root\": \"%s\"}", server_name, listen_port, root_dir;
+          server_count++;
+        }
+        END { print "]" }
+      ' "$CONFIG_FILE" 2>/dev/null || echo "[]")
+    fi
+
+    echo "{\"{{ item.pid }}\": $SERVER_BLOCKS}"
+  args:
+    executable: /bin/bash
+  loop: "{{ webserver_processes_raw }}"
+  when: item.type == 'nginx'
+  register: nginx_server_blocks_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create nginx_server_blocks info
+  ansible.builtin.set_fact:
+    nginx_server_blocks: "{{ nginx_server_blocks | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ nginx_server_blocks_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_server_blocks
+  ansible.builtin.debug:
+    var: nginx_server_blocks
+  when: debug
+
+- name: Extract Nginx upstream blocks from main config
+  ansible.builtin.shell: |
+    set -o pipefail
+    CONFIG_FILE="{{ item.config_file }}"
+    UPSTREAMS="[]"
+
+    if [ -f "$CONFIG_FILE" ]; then
+      # Extract upstream blocks
+      UPSTREAMS=$(awk '
+        BEGIN { in_upstream=0; upstream_count=0; print "[" }
+        /upstream[[:space:]]+[^{]+{/ {
+          in_upstream=1;
+          upstream_name=$2;
+          servers="";
+          next;
+        }
+        in_upstream && /server/ {
+          gsub(/^[[:space:]]*server[[:space:]]+/, "");
+          gsub(/[[:space:]]*;[[:space:]]*$/, "");
+          if (servers != "") servers = servers ",";
+          servers = servers $0;
+        }
+        in_upstream && /^[[:space:]]*}/ {
+          in_upstream=0;
+          if (upstream_count > 0) print ",";
+          printf "{\"name\": \"%s\", \"servers\": \"%s\"}", upstream_name, servers;
+          upstream_count++;
+        }
+        END { print "]" }
+      ' "$CONFIG_FILE" 2>/dev/null || echo "[]")
+    fi
+
+    echo "{\"{{ item.pid }}\": $UPSTREAMS}"
+  args:
+    executable: /bin/bash
+  loop: "{{ webserver_processes_raw }}"
+  when: item.type == 'nginx'
+  register: nginx_upstreams_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create nginx_upstreams info
+  ansible.builtin.set_fact:
+    nginx_upstreams: "{{ nginx_upstreams | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ nginx_upstreams_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_upstreams
+  ansible.builtin.debug:
+    var: nginx_upstreams
+  when: debug
+
+- name: Extract Nginx listen ports from config
+  ansible.builtin.shell: |
+    set -o pipefail
+    CONFIG_FILE="{{ item.config_file }}"
+    LISTEN_PORTS="[]"
+
+    if [ -f "$CONFIG_FILE" ]; then
+      LISTEN_PORTS=$(grep -E "^[[:space:]]*listen" "$CONFIG_FILE" 2>/dev/null | awk '{print $2}' | sed 's/;//g' | sort -u | jq -R . | jq -s . || echo "[]")
+    fi
+
+    echo "{\"{{ item.pid }}\": $LISTEN_PORTS}"
+  args:
+    executable: /bin/bash
+  loop: "{{ webserver_processes_raw }}"
+  when: item.type == 'nginx'
+  register: nginx_listen_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create nginx_listen_ports info
+  ansible.builtin.set_fact:
+    nginx_listen_ports: "{{ nginx_listen_ports | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ nginx_listen_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_listen_ports
+  ansible.builtin.debug:
+    var: nginx_listen_ports
+  when: debug
+
+- name: Extract Nginx document roots from config
+  ansible.builtin.shell: |
+    set -o pipefail
+    CONFIG_FILE="{{ item.config_file }}"
+    DOC_ROOTS="[]"
+
+    if [ -f "$CONFIG_FILE" ]; then
+      DOC_ROOTS=$(grep -E "^[[:space:]]*root" "$CONFIG_FILE" 2>/dev/null | awk '{print $2}' | sed 's/;//g' | sort -u | jq -R . | jq -s . || echo "[]")
+    fi
+
+    echo "{\"{{ item.pid }}\": $DOC_ROOTS}"
+  args:
+    executable: /bin/bash
+  loop: "{{ webserver_processes_raw }}"
+  when: item.type == 'nginx'
+  register: nginx_docroots_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create nginx_document_roots info
+  ansible.builtin.set_fact:
+    nginx_document_roots: "{{ nginx_document_roots | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ nginx_docroots_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_document_roots
+  ansible.builtin.debug:
+    var: nginx_document_roots
+  when: debug
+
+- name: Search for additional Nginx configuration files
+  ansible.builtin.shell: |
+    set -o pipefail
+    CONFIG_DIR="{{ item.config_dir }}"
+    DISTRO_FAMILY="{{ item.distro_family }}"
+    ADDITIONAL_CONFIGS="[]"
+
+    if [ -d "$CONFIG_DIR" ]; then
+      # Distribution-specific config discovery
+      case "$DISTRO_FAMILY" in
+        "RedHat")
+          # RHEL/CentOS/Fedora: conf.d/*.conf
+          ADDITIONAL_CONFIGS=$(find "$CONFIG_DIR" -name "*.conf" -type f \
+            -path "*/conf.d/*" \
+            2>/dev/null | head -20 | jq -R . | jq -s . || echo "[]")
+          ;;
+        "Debian")
+          # Debian/Ubuntu: sites-enabled/*.conf, conf.d/*.conf
+          ADDITIONAL_CONFIGS=$(find "$CONFIG_DIR" -name "*.conf" -type f \
+            -path "*/sites-enabled/*" -o -path "*/conf.d/*" \
+            2>/dev/null | head -20 | jq -R . | jq -s . || echo "[]")
+          ;;
+        "Suse")
+          # SUSE: conf.d/*.conf, vhosts.d/*.conf
+          ADDITIONAL_CONFIGS=$(find "$CONFIG_DIR" -name "*.conf" -type f \
+            -path "*/conf.d/*" -o -path "*/vhosts.d/*" \
+            2>/dev/null | head -20 | jq -R . | jq -s . || echo "[]")
+          ;;
+        *)
+          # Generic: find all .conf files
+          ADDITIONAL_CONFIGS=$(find "$CONFIG_DIR" -name "*.conf" -type f \
+            2>/dev/null | head -20 | jq -R . | jq -s . || echo "[]")
+          ;;
+      esac
+    fi
+
+    echo "{\"{{ item.pid }}\": $ADDITIONAL_CONFIGS}"
+  args:
+    executable: /bin/bash
+  loop: "{{ webserver_processes_raw }}"
+  when: item.type == 'nginx'
+  register: nginx_additional_configs_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create nginx_additional_configs info
+  ansible.builtin.set_fact:
+    nginx_additional_configs: "{{ nginx_additional_configs | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ nginx_additional_configs_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_additional_configs
+  ansible.builtin.debug:
+    var: nginx_additional_configs
+  when: debug
+
+- name: Extract Nginx sites-enabled (Debian/Ubuntu style)
+  ansible.builtin.shell: |
+    set -o pipefail
+    CONFIG_DIR="{{ item.config_dir }}"
+    DISTRO_FAMILY="{{ item.distro_family }}"
+    SITES_ENABLED="[]"
+
+    if [ "$DISTRO_FAMILY" = "Debian" ] && [ -d "$CONFIG_DIR/sites-enabled" ]; then
+      SITES_ENABLED=$(find "$CONFIG_DIR/sites-enabled" -type f \( -name "*.conf" -o ! -name ".*" \) \
+        2>/dev/null | head -20 | jq -R . | jq -s . || echo "[]")
+    fi
+
+    echo "{\"{{ item.pid }}\": $SITES_ENABLED}"
+  args:
+    executable: /bin/bash
+  loop: "{{ webserver_processes_raw }}"
+  when: item.type == 'nginx'
+  register: nginx_sites_enabled_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create nginx_sites_enabled info
+  ansible.builtin.set_fact:
+    nginx_sites_enabled: "{{ nginx_sites_enabled | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ nginx_sites_enabled_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_sites_enabled
+  ansible.builtin.debug:
+    var: nginx_sites_enabled
+  when: debug
+
+- name: Extract Nginx sites-available (Debian/Ubuntu style)
+  ansible.builtin.shell: |
+    set -o pipefail
+    CONFIG_DIR="{{ item.config_dir }}"
+    DISTRO_FAMILY="{{ item.distro_family }}"
+    SITES_AVAILABLE="[]"
+
+    if [ "$DISTRO_FAMILY" = "Debian" ] && [ -d "$CONFIG_DIR/sites-available" ]; then
+      SITES_AVAILABLE=$(find "$CONFIG_DIR/sites-available" -type f \( -name "*.conf" -o ! -name ".*" \) \
+        2>/dev/null | head -20 | jq -R . | jq -s . || echo "[]")
+    fi
+
+    echo "{\"{{ item.pid }}\": $SITES_AVAILABLE}"
+  args:
+    executable: /bin/bash
+  loop: "{{ webserver_processes_raw }}"
+  when: item.type == 'nginx'
+  register: nginx_sites_available_shell
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Create nginx_sites_available info
+  ansible.builtin.set_fact:
+    nginx_sites_available: "{{ nginx_sites_available | default({}) | combine(item.stdout | from_json) }}"
+  loop: "{{ nginx_sites_available_shell.results }}"
+  when: item.stdout is defined
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_sites_available
+  ansible.builtin.debug:
+    var: nginx_sites_available
+  when: debug
