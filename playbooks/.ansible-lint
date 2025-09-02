@@ -12,6 +12,14 @@ exclude_paths:
   - collections/
   - mongodbdata/
 
+# Mapeamento de tipos de arquivo para evitar erros de sintaxe
+kinds:
+  # Arquivos que contêm apenas tasks (não playbooks completos)
+  - tasks: "**/prereqs.yaml"
+  - tasks: "**/collectors/**/*.yaml"
+  - tasks: "**/java/**/*.yaml"
+  - tasks: "**/webservers/**/*.yaml"
+
 # Usar tags específicas
 tags:
   - skip_ansible_lint

@@ -1,6 +1,6 @@
----
-# Prerequisites and Configuration for Discovery System
-# This file configures the selective collection system with collector_only parameter having absolute precedence
+# Ansible Discovery Prerequisites Tasks
+# This file contains tasks to be included in the main discovery playbook
+# It is not a standalone playbook
 
 - name: Configure selective collection variables
   ansible.builtin.set_fact:
