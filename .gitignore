@@ -1,6 +1,3 @@
-# MongoDB data directory
-mongodbdata/
-
 # Virtual environment activation script
 activate
 
