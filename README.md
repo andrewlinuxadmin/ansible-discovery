@@ -113,8 +113,9 @@ ansible-playbook discovery.yaml -e collector_packages=false
 | `selinux` | SELinux status | All hosts | SELinux mode and policies |
 | `blockdev` | Block devices | All hosts | Disk and filesystem information |
 | `java` | Java applications | Java hosts | Tomcat, JBoss, JAR discovery |
-| `apache` | Apache servers | Apache hosts | Virtual hosts and configuration |
-| `nginx` | Nginx servers | Nginx hosts | Server blocks and upstreams |
+| `apache` (work in progress) | Apache servers | Apache hosts | Virtual hosts and configuration |
+| `nginx` (roadmap) | Nginx servers | Nginx hosts | Configuration |
+| `PHP` (roadmap) | PHP applications | Apache and Nginx hosts | Modules and configuration |
 
 ### Basic Examples
 
