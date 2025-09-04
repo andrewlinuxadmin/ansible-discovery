@@ -18,16 +18,16 @@ The below requirements are needed on the host that executes this module.
 
 ## Parameters
 
-| Parameter | Choices/Defaults | Comments |
-|-----------|------------------|----------|
-| **path** <br>*string* / *required* | | Path to the main Apache configuration file (typically httpd.conf or apache2.conf) |
+| Parameter                          | Choices/Defaults                                                           | Comments                                                                                                      |
+|------------------------------------|----------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| **path** <br>*string* / *required*      | | Path to the main Apache configuration file (typically httpd.conf or apache2.conf)                            |
 | **configroot** <br>*string* / *required* | | Root directory for Apache configuration files. This is used to resolve relative paths in Include directives. |
-| **output_format** <br>*string* | **Choices:** <ul><li>dict *(default)*</li><li>json</li></ul> | Format for the returned configuration data |
-| **allowmultioptions** <br>*boolean* | **Default:** yes | Allow multiple occurrences of the same configuration directive |
-| **useapacheinclude** <br>*boolean* | **Default:** yes | Process Apache Include and IncludeOptional directives |
-| **includeagain** <br>*boolean* | **Default:** yes | Allow the same file to be included multiple times |
-| **includedirectories** <br>*boolean* | **Default:** yes | Allow including entire directories |
-| **includeglob** <br>*boolean* | **Default:** yes | Support glob patterns in Include directives |
+| **output_format** <br>*string*         | **Choices:** <ul><li>dict *(default)*</li><li>json</li></ul>             | Format for the returned configuration data                                                                    |
+| **allowmultioptions** <br>*boolean*    | **Default:** yes                                                          | Allow multiple occurrences of the same configuration directive                                               |
+| **useapacheinclude** <br>*boolean*     | **Default:** yes                                                          | Process Apache Include and IncludeOptional directives                                                        |
+| **includeagain** <br>*boolean*         | **Default:** yes                                                          | Allow the same file to be included multiple times                                                             |
+| **includedirectories** <br>*boolean*   | **Default:** yes                                                          | Allow including entire directories                                                                            |
+| **includeglob** <br>*boolean*          | **Default:** yes                                                          | Support glob patterns in Include directives                                                                  |
 | **interpolatevars** <br>*boolean* | **Default:** yes | Interpolate variables defined in the configuration |
 | **interpolateenv** <br>*boolean* | **Default:** yes | Interpolate environment variables |
 | **mergeduplicateoptions** <br>*boolean* | **Default:** yes | Merge duplicate options into lists |

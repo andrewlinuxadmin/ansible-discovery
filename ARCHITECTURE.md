@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Ansible Discovery System implements a modular, selective collection architecture with hybrid discovery strategies and MongoDB caching.
+The Ansible Discovery System implements a modular, selective collection architecture with custom modules, intelligent caching, and cross-platform compatibility. The system prioritizes modern module-based approaches while maintaining fallback mechanisms for legacy environments.
 
 ## Core Architecture
 
@@ -10,43 +10,184 @@ The Ansible Discovery System implements a modular, selective collection architec
 
 ```text
 discovery.yaml (orchestrator)
-├── prereqs.yaml (variables configuration)
-├── process_facts (custom module)
-├── collectors/* (system discovery)
-└── conditional blocks (application discovery)
+├── prereqs.yaml (selective collection configuration)
+├── process_facts (custom module - process discovery)
+├── collectors/*.yaml (conditional system discovery)
+└── custom modules (configuration parsing)
 ```
 
 ### Execution Flow
 
-1. **Prerequisites**: Configure selective collection variables
-2. **Process Collection**: Gather running processes using custom module
-3. **System Discovery**: Execute enabled collectors conditionally
-4. **Application Discovery**: Java/Apache/Nginx based on detected processes
+1. **Prerequisites**: Configure selective collection variables with absolute precedence
+2. **Process Collection**: Gather running processes using custom `process_facts` module
+3. **System Discovery**: Execute enabled collectors conditionally based on `_collector_*` variables
+4. **Application Discovery**: Java/Apache/PHP based on detected processes and custom modules
+5. **Data Consolidation**: Store all facts in MongoDB with configurable TTL
 
 ## Selective Collection System
 
-### Variable Precedence
+### Variable Precedence Logic
+
+The system implements **absolute precedence** for `collector_only`:
 
 ```yaml
-# Absolute precedence logic:
-_collector_X = (collector_only == 'X') if collector_only is defined 
-               else (collector_X | default(true) | bool)
+# Logic in prereqs.yaml:
+_collector_java: "{{ (collector_only == 'java') if collector_only is defined 
+                    else (collector_java | default(true) | bool) }}"
 ```
 
 ### Usage Patterns
 
 ```bash
-# Single collector (absolute precedence)
+# Single collector (absolute precedence) - only executes one collector
 ansible-playbook discovery.yaml -e collector_only=java
 
-# All collectors (default)
+# All collectors (default behavior) - executes all enabled collectors
 ansible-playbook discovery.yaml
 
-# Individual control (when collector_only not used)
-ansible-playbook discovery.yaml -e collector_packages=false
+# Individual control (when collector_only not used) - granular control
+ansible-playbook discovery.yaml -e collector_packages=false -e collector_services=false
 ```
 
-## Collector Architecture
+### Precedence Matrix
+
+| Scenario  | `collector_only`  | Individual flags        | Result                    |
+|-----------|-------------------|-------------------------|---------------------------|
+| Absolute  | `java`            | Ignored                 | Only Java collector runs  |
+| Default   | Undefined         | Default `true`          | All collectors run        |
+| Selective | Undefined         | `collector_java=false`  | All except Java run       |
+
+## Custom Modules Architecture
+
+### Module Design Principles
+
+1. **Standalone**: Minimal external dependencies
+2. **Cross-platform**: Python 2.7+ and 3.x compatibility
+3. **Comprehensive**: Full parsing with error handling
+4. **Cacheable**: Results stored in MongoDB for performance
+
+### Module Specifications
+
+#### process_facts.py
+
+- **Purpose**: Replace AWK-based process parsing with native Python
+- **Implementation**: Direct `/proc` filesystem reading
+- **Features**: Container detection, comprehensive process information
+- **Dependencies**: None (pure Python)
+- **Output**: Structured process list with PID, command, args, user, etc.
+
+#### apache_config_parser.py
+
+- **Purpose**: Complete Apache configuration parsing
+- **Implementation**: Uses `apacheconfig` library for robust parsing
+- **Features**: Include directive processing, VirtualHost extraction, conditional blocks
+- **Dependencies**: `apacheconfig` Python package
+- **Output**: Hierarchical configuration structure
+
+#### nginx_config_parser.py
+
+- **Purpose**: Complete NGINX configuration parsing
+- **Implementation**: Standalone parser based on nginx-crossplane
+- **Features**: Two output formats (readable/crossplane), security filtering, include processing
+- **Dependencies**: None (completely standalone)
+- **Output**: Configurable format - readable hierarchical or technical crossplane
+- **Status**: 🚧 Module complete, collector integration in development
+
+#### php_config_parser.py
+
+- **Purpose**: Multi-distribution PHP configuration discovery
+- **Implementation**: Pure Python with smart discovery algorithms
+- **Features**: Auto-discovery, SCL support, multi-version handling
+- **Dependencies**: None (pure Python)
+- **Output**: Configuration files list with settings and extensions
+
+### Module Integration Pattern
+
+```yaml
+# Modern collector pattern using custom modules
+- name: Parse PHP configurations
+  php_config_parser:
+  register: php_config_raw
+
+- name: Create PHP facts
+  ansible.builtin.set_fact:
+    php_info: "{{ php_config_raw }}"
+    cacheable: true
+```
+
+## Data Flow Architecture
+
+### Discovery Pipeline
+
+```text
+ansible-playbook discovery.yaml
+├── prereqs.yaml → Configure selective collection variables
+├── process_facts → Collect all system processes
+├── System Collectors (conditional)
+│   ├── packages.yaml → fedora.linux_system_roles.packages
+│   ├── services.yaml → fedora.linux_system_roles.services
+│   └── ports.yaml → community.general.listen_ports_facts
+└── Application Collectors (process-based)
+    ├── java/ → Process classification + discovery
+    ├── apache.yaml → apache_config_parser module
+    ├── nginx.yaml → nginx_config_parser module (dev)
+    └── php.yaml → php_config_parser module
+```
+
+### Caching Strategy
+
+- **Storage**: MongoDB with configurable TTL
+- **Connection**: `mongodb://localhost:27017/ansible`
+- **Collection**: `cache` with document structure `{_id: "ansible_facts<hostname>", data: {...}}`
+- **TTL**: Configurable (default: 0 = infinite)
+- **Performance**: Subsequent runs skip discovery if cached data exists
+
+## Performance Architecture
+
+### Optimization Strategies
+
+1. **Selective Collection**: Use `collector_only` to run specific collectors
+2. **MongoDB Caching**: Avoid re-discovery with persistent caching
+3. **Custom Modules**: Replace shell scripts with efficient Python modules
+4. **Conditional Execution**: Skip collectors when processes not detected
+5. **Custom Filters**: Use `file_exists` filter vs. multiple `stat` calls
+
+### Development Status
+
+| Component             | Status          | Notes                                   |
+|-----------------------|-----------------|-----------------------------------------|
+| Process Facts Module  | ✅ Production   | Replaces AWK scripts                    |
+| Apache Config Parser  | ✅ Production   | Full configuration parsing              |
+| PHP Config Parser     | ✅ Production   | Multi-distribution support              |
+| NGINX Config Parser   | 🚧 Development  | Module complete, collector pending      |
+| Selective Collection  | ✅ Production   | Absolute precedence implemented         |
+| MongoDB Caching       | ✅ Production   | TTL-based with performance optimization |
+| Custom Filters        | ✅ Production   | File operation filters                  |
+
+## Technical Specifications
+
+### Dependencies
+
+#### Required Collections
+
+- `ansible.posix`
+- `community.general`
+- `community.mongodb`
+- `fedora.linux_system_roles`
+
+#### Python Dependencies
+
+- **Core**: Python 2.7+ or 3.x
+- **apache_config_parser**: `apacheconfig` package
+- **Other modules**: No external dependencies
+
+### System Requirements
+
+- **Target Systems**: Linux (RHEL, Debian, SUSE families)
+- **Control Node**: Ansible 2.9+, Python 3.9+
+- **Database**: MongoDB (local or remote)
+- **Network**: SSH connectivity to target hosts
+- **Permissions**: Sudo access for system discovery
 
 ### Hybrid Collection Pattern
 
@@ -243,12 +384,6 @@ if [ -f /.dockerenv ] || grep -q "docker\|lxc\|podman" /proc/1/cgroup 2>/dev/nul
 - `include_tasks` for runtime evaluation
 - Process detection before expensive analysis
 - Container detection for automatic skip
-
-### Caching Strategy
-
-- MongoDB persistence across runs
-- Infinite TTL for development
-- Selective cache invalidation support
 
 ## Development Guidelines
 

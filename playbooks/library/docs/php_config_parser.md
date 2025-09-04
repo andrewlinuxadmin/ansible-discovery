@@ -25,11 +25,11 @@ The `php_config_parser` module is a custom Ansible module designed to parse PHP 
 
 ## Module Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `paths` | list | No | [] | Specific PHP config file paths to parse |
-| `php_version` | str | No | None | Specific PHP version to look for |
-| `include_additional_ini` | bool | No | true | Include additional .ini files from conf.d |
+| Parameter                | Type | Required | Default | Description                                |
+|--------------------------|------|----------|---------|-------------------------------------------|
+| `paths`                  | list | No       | []      | Specific PHP config file paths to parse   |
+| `php_version`            | str  | No       | None    | Specific PHP version to look for           |
+| `include_additional_ini` | bool | No       | true    | Include additional .ini files from conf.d |
 
 ## Return Values
 

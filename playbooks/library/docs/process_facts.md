@@ -21,10 +21,10 @@ The below requirements are needed on the host that executes this module.
 
 ## Parameters
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| exclude_kernel_threads | boolean | no | true | Exclude kernel threads from results. Kernel threads typically have no command line arguments and run in kernel space, making them less relevant for application discovery |
-| detect_containers | boolean | no | true | Detect containerized processes by examining cgroup information and container runtime indicators |
+| Parameter               | Type    | Required | Default | Description                                                                                                                                                   |
+|-------------------------|---------|----------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| exclude_kernel_threads  | boolean | no       | true    | Exclude kernel threads from results. Kernel threads typically have no command line arguments and run in kernel space, making them less relevant for application discovery |
+| detect_containers       | boolean | no       | true    | Detect containerized processes by examining cgroup information and container runtime indicators                                                                |
 
 ## Return Values
 

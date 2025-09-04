@@ -18,15 +18,15 @@ The below requirements are needed on the host that executes this module.
 
 ## Parameters
 
-| Parameter | Choices/Defaults | Comments |
-|-----------|------------------|----------|
-| **path**<br>*path* / *required* | | Path to the main NGINX configuration file to parse<br>Must be an existing file accessible by the module |
-| **include_comments**<br>*boolean* | **Choices:**<br>- no ← (default)<br>- yes | Whether to include comments in the parsed output<br>Comments are preserved with line information when enabled<br>Useful for configuration analysis and documentation purposes |
-| **single_file**<br>*boolean* | **Choices:**<br>- no ← (default)<br>- yes | Parse only the specified file, ignoring all include directives<br>When false, processes all included files recursively<br>Useful for analyzing individual configuration files in isolation |
-| **ignore_directives**<br>*list* / *elements=string* | **Default:**<br>[] | List of directive names to ignore during parsing<br>Ignored directives will not appear in the output<br>Useful for security purposes to exclude sensitive data<br>Directive names are case-sensitive |
-| **strict**<br>*boolean* | **Choices:**<br>- no ← (default)<br>- yes | Enable strict parsing mode for configuration validation<br>When true, unknown directives cause parsing to fail<br>When false, unknown directives are processed as-is<br>Recommended for production configuration validation |
-| **combine**<br>*boolean* | **Choices:**<br>- no ← (default)<br>- yes | Combine all included files into a single configuration structure<br>When true, includes are expanded inline in crossplane format<br>When false, maintains separate file structures with references<br>Technical feature for crossplane compatibility |
-| **crossplane_format**<br>*boolean* | **Choices:**<br>- no ← (default)<br>- yes | Controls the output format of the parsed configuration<br>When false (default), returns readable nginx-like hierarchical format<br>When true, returns technical crossplane format with parsing metadata<br>Crossplane format includes line numbers, file references, and include IDs<br>Readable format expands includes and creates clean hierarchical structure |
+| Parameter                               | Choices/Defaults                    | Comments                                                                     |
+|-----------------------------------------|-------------------------------------|------------------------------------------------------------------------------|
+| **path**<br>*path* / *required*         |                                     | Path to the main NGINX configuration file to parse<br>Must be an existing file accessible by the module |
+| **include_comments**<br>*boolean*       | **Choices:**<br>- no ← (default)<br>- yes | Whether to include comments in the parsed output<br>Comments are preserved with line information when enabled<br>Useful for configuration analysis and documentation purposes |
+| **single_file**<br>*boolean*            | **Choices:**<br>- no ← (default)<br>- yes | Parse only the specified file, ignoring all include directives<br>When false, processes all included files recursively<br>Useful for analyzing individual configuration files in isolation |
+| **ignore_directives**<br>*list* / *elements=string* | **Default:**<br>[]           | List of directive names to ignore during parsing<br>Ignored directives will not appear in the output<br>Useful for security purposes to exclude sensitive data<br>Directive names are case-sensitive |
+| **strict**<br>*boolean*                 | **Choices:**<br>- no ← (default)<br>- yes | Enable strict parsing mode for configuration validation<br>When true, unknown directives cause parsing to fail<br>When false, unknown directives are processed as-is<br>Recommended for production configuration validation |
+| **combine**<br>*boolean*                | **Choices:**<br>- no ← (default)<br>- yes | Combine all included files into a single configuration structure<br>When true, includes are expanded inline in crossplane format<br>When false, maintains separate file structures with references<br>Technical feature for crossplane compatibility |
+| **crossplane_format**<br>*boolean*      | **Choices:**<br>- no ← (default)<br>- yes | Controls the output format of the parsed configuration<br>When false (default), returns readable nginx-like hierarchical format<br>When true, returns technical crossplane format with parsing metadata<br>Crossplane format includes line numbers, file references, and include IDs<br>Readable format expands includes and creates clean hierarchical structure |
 
 ## Notes
 

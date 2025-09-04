@@ -1,36 +1,73 @@
 # Deployment and Operations Guide
 
-## Quick Start
+## Prerequisites
 
-### Prerequisites
+### System Requirements
+
+- **Control Node**: Ansible 2.9+, Python 3.9+, MongoDB
+- **Target Hosts**: Linux (RHEL/CentOS, Ubuntu/Debian, SUSE)
+- **Network**: SSH connectivity to target hosts
+- **Permissions**: Sudo access on targets for complete discovery
+
+### Collection Dependencies
 
 ```bash
-# Install required collections
+# Install required Ansible collections
+cd playbooks/
 ansible-galaxy collection install -r galaxy-requirements.yaml
+```
 
-# Configure Python environment (if needed)
+### Python Environment
+
+```bash
+# From project root
+source activate  # Activates virtual environment
 pip install -r pip-venv-requirements.txt
+```
 
-# Start MongoDB (for caching)
+### MongoDB Setup
+
+```bash
+# Local MongoDB (recommended for development)
 systemctl start mongod
-# or
+
+# Docker alternative
 docker run -d -p 27017:27017 --name ansible-mongo mongo:latest
 ```
 
-### Basic Usage
+## Quick Start
+
+### Basic Deployment
 
 ```bash
-# Full system discovery
+# Navigate to playbooks directory
+cd playbooks/
+
+# Copy and configure inventory
+cp inventory.example inventory
+# Edit inventory with your target hosts
+
+# Full discovery (all collectors)
 ansible-playbook discovery.yaml
 
-# Single collector
-ansible-playbook discovery.yaml -e collector_only=packages
+# Single collector (selective)
+ansible-playbook discovery.yaml -e collector_only=java
 
-# Debug mode
+# Debug mode with verbose output
 ansible-playbook discovery.yaml -e debug=true -e log=true
+```
 
-# Specific host
-ansible-playbook discovery.yaml -i "hostname," -e debug=true
+### Verification
+
+```bash
+# Check MongoDB cache
+mongosh ansible
+> db.cache.find({}, {_id: 1}).toArray()
+> exit
+
+# Validate custom modules
+ansible localhost -m process_facts
+ansible localhost -m php_config_parser
 ```
 
 ## Configuration
@@ -38,17 +75,18 @@ ansible-playbook discovery.yaml -i "hostname," -e debug=true
 ### Inventory Setup
 
 ```ini
-# inventory.example
-[targets]
-server1.example.com ansible_user=root
-server2.example.com ansible_user=ansible ansible_become=true
-
-[containers]
-container1 ansible_connection=docker
-container2 ansible_connection=podman
+# inventory
+[production]
+web1.company.com ansible_user=ansible
+web2.company.com ansible_user=ansible
+db1.company.com ansible_user=ansible
 
 [development]
+dev1.company.com ansible_user=root
 localhost ansible_connection=local
+
+[containers]
+app-container ansible_connection=docker
 ```
 
 ### Ansible Configuration
@@ -62,12 +100,13 @@ gathering = smart
 fact_caching = community.mongodb.mongodb
 fact_caching_timeout = 0
 fact_caching_connection = mongodb://localhost:27017/ansible
+filter_plugins = ./filter_plugins
 
 [inventory]
 enable_plugins = host_list, script, auto, yaml, ini
 
 [privilege_escalation]
-become = False
+become = True
 become_method = sudo
 become_user = root
 ```
@@ -76,7 +115,7 @@ become_user = root
 
 ```yaml
 # group_vars/all.yml
-# Selective collection control
+# System collectors
 collector_packages: true
 collector_services: true
 collector_ports: true
@@ -85,19 +124,188 @@ collector_bootloader: true
 collector_selinux: true
 collector_blockdev: true
 
+# Application collectors
+collector_java: true
+collector_apache: true
+collector_nginx: true    # Note: Module in development
+collector_php: true
+
 # Output control
 debug: false
 log: false
-
-# MongoDB settings
-mongodb_host: localhost
-mongodb_port: 27017
-mongodb_database: ansible
 ```
 
 ## Production Deployment
 
-### Security Configuration
+### Security Considerations
+
+- **SSH Keys**: Use key-based authentication instead of passwords
+- **Sudo Access**: Configure passwordless sudo for automation accounts
+- **Network**: Restrict MongoDB access to control nodes only
+- **Data**: Consider TTL settings for sensitive cached data
+
+### Performance Tuning
+
+```yaml
+# For large environments
+forks = 50
+host_key_checking = False
+gathering = smart
+fact_caching_timeout = 86400  # 24 hours instead of infinite
+```
+
+### Selective Collection Strategy
+
+```bash
+# For large-scale deployments, use selective collection
+# Infrastructure discovery
+ansible-playbook discovery.yaml -e collector_only=packages -l production
+
+# Application discovery
+ansible-playbook discovery.yaml -e collector_only=java -l production
+
+# Web server discovery
+ansible-playbook discovery.yaml -e collector_only=apache -l web_servers
+```
+
+## Operations
+
+### Cache Management
+
+```bash
+# Clear all cache
+./scripts/clear-cache.sh
+
+# Clear specific host
+mongosh ansible --eval "db.cache.deleteOne({_id:'ansible_factshostname.domain.com'})"
+
+# Check cache size
+mongosh ansible --eval "db.stats()"
+```
+
+### Troubleshooting
+
+#### Common Issues
+
+1. **Module not found**: Ensure you're in `playbooks/` directory
+2. **MongoDB connection**: Verify MongoDB is running on localhost:27017
+3. **SSH failures**: Check inventory and SSH key configuration
+4. **Permission denied**: Ensure sudo access is configured
+
+#### Debug Commands
+
+```bash
+# Test connectivity
+ansible all -m ping
+
+# Check custom modules
+ansible localhost -m apache_config_parser -a "path=/etc/httpd/conf/httpd.conf configroot=/etc/httpd"
+
+# Validate syntax
+ansible-playbook --syntax-check discovery.yaml
+
+# Run with maximum verbosity
+ansible-playbook discovery.yaml -vvv
+```
+
+### Monitoring and Maintenance
+
+#### Health Checks
+
+```bash
+# Weekly: Validate modules
+./filter_plugins/tests/run_tests.sh
+./library/tests/run_tests.sh
+
+# Monthly: Clear stale cache
+mongosh ansible --eval "db.cache.drop()"
+
+# As needed: Update collections
+ansible-galaxy collection install -r galaxy-requirements.yaml --force
+```
+
+#### Log Analysis
+
+```bash
+# Enable detailed logging
+ansible-playbook discovery.yaml -e log=true -e debug=true > discovery.log 2>&1
+
+# Parse logs for errors
+grep -i error discovery.log
+grep -i failed discovery.log
+```
+
+## Advanced Operations
+
+### Custom Module Development
+
+```bash
+# Development workflow
+cd playbooks/
+
+# 1. Create module in library/
+vim library/new_module.py
+
+# 2. Create documentation
+vim library/docs/new_module.md
+
+# 3. Update module index
+vim library/docs/README.md
+
+# 4. Create tests
+vim library/tests/test_new_module.py
+
+# 5. Run tests
+./library/tests/run_tests.sh
+```
+
+### Filter Plugin Development
+
+```bash
+# 1. Add filter to file_utils.py
+vim filter_plugins/file_utils.py
+
+# 2. Update tests
+vim filter_plugins/tests/test_file_utils.yaml
+
+# 3. Run tests
+./filter_plugins/tests/run_tests.sh
+
+# 4. Update documentation
+vim filter_plugins/README.md
+```
+
+### Collector Development
+
+```bash
+# 1. Create collector
+vim collectors/new_collector.yaml
+
+# 2. Add to discovery.yaml
+vim discovery.yaml
+
+# 3. Add variable to prereqs.yaml
+vim prereqs.yaml
+
+# 4. Test individually
+ansible-playbook discovery.yaml -e collector_only=new_collector
+```
+
+## Status and Roadmap
+
+### Current Status
+
+- ✅ **Production Ready**: process_facts, apache_config_parser, php_config_parser, custom filters
+- ✅ **Stable**: Selective collection system, MongoDB caching, system collectors
+- 🚧 **In Development**: nginx_config_parser collector integration
+- 📋 **Planned**: Docker support, .NET discovery, Python application discovery
+
+### Known Limitations
+
+- NGINX module complete but collector integration pending
+- Docker container discovery in development
+- Limited support for Windows targets
+- Requires sudo access for complete system discovery
 
 ```yaml
 # Secure inventory management
@@ -146,23 +354,21 @@ ansible-playbook discovery.yaml -l "batch2" --forks=10
 ### MongoDB Operations
 
 ```bash
-# Connect to cache database
-mongosh ansible
+## Status and Roadmap
 
-# View cached hosts
-db.cache.find({}, {_id: 1}).toArray()
+### Current Status
 
-# Inspect specific host cache
-db.cache.findOne({_id: "ansible_facts<hostname>"}).data
+- ✅ **Production Ready**: process_facts, apache_config_parser, php_config_parser, custom filters
+- ✅ **Stable**: Selective collection system, MongoDB caching, system collectors
+- 🚧 **In Development**: nginx_config_parser collector integration
+- 📋 **Planned**: Docker support, .NET discovery, Python application discovery
 
-# Clear all cache
-db.cache.drop()
+### Known Limitations
 
-# Clear specific host cache
-db.cache.deleteOne({_id: "ansible_facts<hostname>"})
-
-# Clear expired cache (if TTL > 0)
-db.cache.deleteMany({timestamp: {$lt: new Date(Date.now() - 3600000)}})
+- NGINX module complete but collector integration pending
+- Docker container discovery in development
+- Limited support for Windows targets
+- Requires sudo access for complete system discovery
 ```
 
 ### Cache Statistics

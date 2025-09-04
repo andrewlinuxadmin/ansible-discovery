@@ -2,77 +2,204 @@
 
 ## Overview
 
-This directory contains comprehensive documentation for the Ansible Discovery System, a selective collection architecture for automated infrastructure discovery.
+This directory contains comprehensive documentation for the Ansible Discovery System, a modular infrastructure discovery platform with custom modules, selective collection, and MongoDB caching.
 
 ## Documentation Structure
 
 ### Main Documentation
 
-| File | Purpose | Audience |
-|------|---------|----------|
-| **[README.md](README.md)** | Project overview and quick start | All users |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Technical architecture and design | Developers/Architects |
-| **[DEPLOYMENT.md](DEPLOYMENT.md)** | Production deployment guide | Operations/DevOps |
+| File                                      | Purpose                           | Audience              |
+|-------------------------------------------|-----------------------------------|-----------------------|
+| **[README.md](README.md)**                | Project overview and quick start  | All users             |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)**    | Technical architecture and design | Developers/Architects |
+| **[DEPLOYMENT.md](DEPLOYMENT.md)**        | Production deployment guide       | Operations/DevOps     |
 
-### Component Documentation
+### Custom Components Documentation
 
-| Component | File | Description |
-|-----------|------|-------------|
-| **System Collectors** | [collectors/README.md](collectors/README.md) | Detailed system collection modules |
-| **Java Discovery** | [java/README.md](java/README.md) | Java application discovery pipeline |
-| **Custom Filters** | [playbooks/filter_plugins/README.md](playbooks/filter_plugins/README.md) | Custom Ansible filters |
-| **Filter Tests** | [playbooks/filter_plugins/tests/README.md](playbooks/filter_plugins/tests/README.md) | Filter testing framework |
+| Component           | Location                                                                      | Description                   |
+|---------------------|-------------------------------------------------------------------------------|-------------------------------|
+| **Custom Modules**  | [playbooks/library/docs/](playbooks/library/docs/)                           | Complete module documentation |
+| **Custom Filters**  | [playbooks/filter_plugins/README.md](playbooks/filter_plugins/README.md)     | File operation filters        |
+| **Module Tests**    | [playbooks/library/tests/](playbooks/library/tests/)                         | Module testing framework      |
+| **Filter Tests**    | [playbooks/filter_plugins/tests/](playbooks/filter_plugins/tests/)           | Filter testing framework      |
+
+### Collector Documentation
+
+| Collector            | Status          | Description                                       |
+|----------------------|-----------------|---------------------------------------------------|
+| **Java Discovery**   | ✅ Production   | Tomcat, JBoss, generic Java applications         |
+| **Apache HTTP**      | ✅ Production   | Configuration parsing with apache_config_parser  |
+| **PHP Discovery**    | ✅ Production   | Multi-distribution with php_config_parser        |
+| **NGINX**            | 🚧 Development  | Module complete, collector integration pending    |
+| **System Collectors** | ✅ Production   | Packages, services, ports, firewall, SELinux     |
 
 ## Quick Navigation
 
 ### For New Users
-1. Start with **[README.md](README.md)** for project overview
-2. Follow **[DEPLOYMENT.md](DEPLOYMENT.md)** for setup instructions
-3. Explore **[collectors/README.md](collectors/README.md)** for available collectors
+
+1. **Start Here**: [README.md](README.md) - Project overview and features
+2. **Setup**: [DEPLOYMENT.md](DEPLOYMENT.md) - Installation and configuration
+3. **Usage**: Run `ansible-playbook discovery.yaml` for full discovery
+4. **Selective**: Use `ansible-playbook discovery.yaml -e collector_only=java`
 
 ### For Developers
-1. Review **[ARCHITECTURE.md](ARCHITECTURE.md)** for system design
-2. Study **[java/README.md](java/README.md)** for complex discovery patterns
-3. Examine **[filter_plugins/README.md](playbooks/filter_plugins/README.md)** for custom extensions
+
+1. **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md) - System design and patterns
+2. **Custom Modules**: [playbooks/library/docs/README.md](playbooks/library/docs/README.md)
+3. **Module Examples**:
+   - [process_facts.md](playbooks/library/docs/process_facts.md) - Process discovery
+   - [apache_config_parser.md](playbooks/library/docs/apache_config_parser.md) - Apache parsing
+   - [nginx_config_parser.md](playbooks/library/docs/nginx_config_parser.md) - NGINX parsing (dev)
+   - [php_config_parser.md](playbooks/library/docs/php_config_parser.md) - PHP discovery
+4. **Testing**: Module and filter test frameworks in respective `/tests/` directories
 
 ### For Operations Teams
-1. **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment
-2. **[README.md](README.md)** - Daily usage patterns
-3. **[ARCHITECTURE.md](ARCHITECTURE.md)** - Troubleshooting reference
 
-## Key Concepts
+1. **Deployment**: [DEPLOYMENT.md](DEPLOYMENT.md) - Production setup and operations
+2. **Cache Management**: MongoDB operations and maintenance
+3. **Troubleshooting**: Debug mode with `-e debug=true -e log=true`
+4. **Performance**: Selective collection and MongoDB optimization
+
+## Key Technical Concepts
 
 ### Selective Collection System
-- **collector_only**: Absolute precedence for single collector execution
-- **collector_NAME**: Individual collector control when collector_only not used
-- **Hybrid Discovery**: fedora.linux_system_roles with manual fallbacks
 
-### Architecture Patterns
-- **Multi-Stage Discovery**: Prerequisites → Collection → Analysis → Consolidation
-- **Container Awareness**: Automatic detection and behavior adjustment
-- **Graceful Degradation**: Fallback methods for missing dependencies
-- **MongoDB Caching**: Persistent fact storage with TTL control
+The system implements **absolute precedence** for selective collection:
 
-### Java Discovery Pipeline
-- **Process Classification**: Automatic detection of Tomcat, JBoss, Spring Boot, Quarkus
-- **Configuration Analysis**: Deep inspection of application configurations
-- **Version Detection**: JVM and application version discovery
-- **Data Consolidation**: Unified output format across application types
+```bash
+# Single collector (absolute precedence)
+ansible-playbook discovery.yaml -e collector_only=java
 
-## Recent Updates
+# All collectors (default behavior)  
+ansible-playbook discovery.yaml
 
-### Documentation Rewrite (Latest)
-- Completely restructured all documentation to reflect current architecture
-- Added comprehensive technical architecture guide
-- Created detailed deployment and operations manual
-- Expanded Java discovery documentation with examples
-- Improved collector documentation with usage patterns
+# Individual control (when collector_only not used)
+ansible-playbook discovery.yaml -e collector_packages=false
+```
 
-### Architecture Improvements
-- Implemented selective collection system with absolute precedence
-- Added hybrid discovery pattern using fedora.linux_system_roles
-- Enhanced container detection and behavior adjustment
-- Integrated MongoDB caching with infinite TTL for development
+### Custom Module Architecture
+
+Four production-ready custom modules replace shell scripts:
+
+- **process_facts**: System process discovery via `/proc` filesystem
+- **apache_config_parser**: Complete Apache configuration parsing
+- **php_config_parser**: Multi-distribution PHP configuration discovery  
+- **nginx_config_parser**: Complete NGINX configuration parsing (integration pending)
+
+### Caching Strategy
+
+- **Storage**: MongoDB with configurable TTL
+- **Performance**: Subsequent runs skip discovery if cached
+- **Management**: Scripts in `/scripts/` for cache operations
+- **Connection**: `mongodb://localhost:27017/ansible`
+
+## Development Workflows
+
+### Adding New Collectors
+
+1. **Create collector**: `collectors/new_collector.yaml`
+2. **Add to discovery**: Update `discovery.yaml` with include_tasks
+3. **Configure variables**: Add `_collector_new` to `prereqs.yaml`
+4. **Test**: `ansible-playbook discovery.yaml -e collector_only=new_collector`
+
+### Custom Module Development
+
+1. **Create module**: `playbooks/library/new_module.py`
+2. **Document**: `playbooks/library/docs/new_module.md`
+3. **Update index**: `playbooks/library/docs/README.md`
+4. **Create tests**: `playbooks/library/tests/test_new_module.py`
+5. **Validate**: `./library/tests/run_tests.sh`
+
+### Custom Filter Development
+
+1. **Add filter**: `playbooks/filter_plugins/file_utils.py`
+2. **Create tests**: `playbooks/filter_plugins/tests/test_file_utils.yaml`
+3. **Validate**: `./filter_plugins/tests/run_tests.sh`
+4. **Document**: Update `playbooks/filter_plugins/README.md`
+
+## Current Development Status
+
+### Production Ready ✅
+
+- **Core Architecture**: Selective collection with absolute precedence
+- **MongoDB Caching**: TTL-based with performance optimization
+- **Process Discovery**: Custom `process_facts` module
+- **Apache Discovery**: Complete configuration parsing
+- **PHP Discovery**: Multi-distribution support
+- **System Collectors**: Packages, services, firewall, etc.
+- **Custom Filters**: File operation helpers
+
+### In Development 🚧
+
+- **NGINX Integration**: Module complete, collector integration pending
+- **Docker Support**: Container discovery and process mapping
+- **Performance Optimization**: Large-scale deployment patterns
+
+### Planned 📋
+
+- **.NET Discovery**: .NET Core/Framework application discovery
+- **Python Discovery**: Django, Flask application support
+- **Ruby Discovery**: Rails application support
+- **Enhanced Docker**: Complete container ecosystem discovery
+
+## Support and Resources
+
+### Testing
+
+```bash
+# Test custom modules
+cd playbooks/
+./library/tests/run_tests.sh
+
+# Test custom filters  
+./filter_plugins/tests/run_tests.sh
+
+# Validate syntax
+ansible-playbook --syntax-check discovery.yaml
+```
+
+### Code Quality
+
+```bash
+# Python linting
+source ../activate  # Activate virtual environment
+flake8 library/ filter_plugins/
+pylint library/ filter_plugins/
+
+# Markdown linting
+markdownlint *.md --fix
+```
+
+### Getting Help
+
+1. **Module Documentation**: Check `playbooks/library/docs/` for detailed module info
+2. **Test Examples**: Review test files for usage patterns
+3. **Debug Mode**: Use `-e debug=true -e log=true` for detailed output
+4. **Cache Inspection**: Use MongoDB shell or `scripts/manage-cache.sh`
+
+## Contributing
+
+### Documentation Standards
+
+- **Markdown**: Use markdownlint for formatting consistency
+- **Code Examples**: Include working examples in all documentation
+- **Module Documentation**: Follow Ansible documentation format
+- **Testing**: All new features must include tests
+
+### Code Standards
+
+- **Python**: Follow PEP 8, include docstrings and type hints
+- **Ansible**: Use descriptive task names and proper YAML formatting
+- **Testing**: Maintain test coverage for all custom components
+- **Versioning**: Use semantic versioning for releases
+### Code Standards
+
+- **Python**: Follow PEP 8, include docstrings and type hints
+- **Ansible**: Use descriptive task names and proper YAML formatting
+- **Testing**: Maintain test coverage for all custom components
+- **Versioning**: Use semantic versioning for releases
+
+- **Versioning**: Use semantic versioning for releases
 
 ## Contributing
 
