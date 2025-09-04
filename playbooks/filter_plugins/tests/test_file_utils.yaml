@@ -16,7 +16,7 @@
 
   tasks:
     - name: Create temporary test file
-      copy:
+      ansible.builtin.copy:
         content: "test content for filter validation"
         dest: "{{ test_files.temp_test_file }}"
         mode: '0644'
@@ -147,21 +147,21 @@
     - name: "Verify filter behavior differences"
       block:
         - name: "Compare filters on readable file"
-          set_fact:
+          ansible.builtin.set_fact:
             readable_results:
               file_exists: "{{ test_files.readable_file | file_exists }}"
               path_exists: "{{ test_files.readable_file | path_exists }}"
               file_readable: "{{ test_files.readable_file | file_readable }}"
 
         - name: "Compare filters on directory"
-          set_fact:
+          ansible.builtin.set_fact:
             directory_results:
               file_exists: "{{ test_files.directory | file_exists }}"
               path_exists: "{{ test_files.directory | path_exists }}"
               file_readable: "{{ test_files.directory | file_readable }}"
 
         - name: "Compare filters on unreadable file"
-          set_fact:
+          ansible.builtin.set_fact:
             unreadable_results:
               file_exists: "{{ test_files.unreadable_file | file_exists }}"
               path_exists: "{{ test_files.unreadable_file | path_exists }}"
@@ -207,7 +207,7 @@
         success_msg: "✅ Performance test completed successfully"
 
     - name: "Display test summary"
-      debug:
+      ansible.builtin.debug:
         msg:
           - "🎉 All filter tests completed successfully!"
           - "✅ file_exists: Validates file existence"
@@ -218,7 +218,7 @@
 
   post_tasks:
     - name: Cleanup temporary test file
-      file:
+      ansible.builtin.file:
         path: "{{ test_files.temp_test_file }}"
         state: absent
       ignore_errors: true

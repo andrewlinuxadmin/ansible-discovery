@@ -148,7 +148,7 @@
     cacheable: true
     java_processes: []
 
-- name: Merge all Java instance data
+- name: Merge all Java instances data
   ansible.builtin.set_fact:
     cacheable: true
     java_processes: >-

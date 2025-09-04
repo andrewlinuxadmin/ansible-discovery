@@ -125,9 +125,15 @@ class ProcessCollectorPure:
                     cgroup_content = f.read()
 
                 container_indicators = [
-                    "/docker/", "/containerd/", "/podman/",
-                    "/machine.slice/", "/crio-", "/k8s_",
-                    "/kubelet", ".scope", "/lxc/",
+                    "/docker/",
+                    "/containerd/",
+                    "/podman/",
+                    "/machine.slice/",
+                    "/crio-",
+                    "/k8s_",
+                    "/kubelet",
+                    ".scope",
+                    "/lxc/",
                 ]
 
                 for indicator in container_indicators:
@@ -143,13 +149,15 @@ class ProcessCollectorPure:
                 if environ_data:
                     # Python2/3 compatible decode
                     try:
-                        environ_str = environ_data.decode("utf-8",
-                                                          errors="ignore")
+                        environ_str = environ_data.decode(
+                            "utf-8", errors="ignore"
+                        )
                     except AttributeError:
                         environ_str = str(environ_data)
 
                     container_env_vars = [
-                        "CONTAINER=", "container=",
+                        "CONTAINER=",
+                        "container=",
                         "KUBERNETES_SERVICE_HOST=",
                         "DOCKER_CONTAINER=",
                     ]
@@ -297,7 +305,7 @@ class ProcessCollectorPure:
                 # Get additional info
                 cmdline = self._get_cmdline(pid)
                 if not cmdline:
-                    cmdline = "[{0}]".format(stat_info['comm'])
+                    cmdline = "[{0}]".format(stat_info["comm"])
 
                 # Extract command name
                 cmdline_parts = cmdline.split()
@@ -340,29 +348,26 @@ def main():
     """Main function."""
     module = AnsibleModule(
         argument_spec=dict(
-            exclude_kernel_threads=dict(type='bool', default=True),
-            detect_containers=dict(type='bool', default=True),
+            exclude_kernel_threads=dict(type="bool", default=True),
+            detect_containers=dict(type="bool", default=True),
         ),
         supports_check_mode=True,
     )
 
     try:
         collector = ProcessCollectorPure(
-            exclude_kernel_threads=module.params['exclude_kernel_threads'],
-            detect_containers=module.params['detect_containers']
+            exclude_kernel_threads=module.params["exclude_kernel_threads"],
+            detect_containers=module.params["detect_containers"],
         )
 
         processes = collector.collect_processes()
 
-        module.exit_json(
-            changed=False,
-            ansible_facts={'processes': processes}
-        )
+        module.exit_json(changed=False, ansible_facts={"processes": processes})
 
     except Exception as e:
         # Python2/3 compatible error message
         module.fail_json(msg="Error collecting processes: {0}".format(str(e)))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

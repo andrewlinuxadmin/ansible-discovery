@@ -73,7 +73,12 @@
   when: apache_all_processes_raw | length > 0
   no_log: "{{ not log }}"
 
-- name: Create Apache instances list with children PIDs
+- name: Debug apache_parent_pids
+  ansible.builtin.debug:
+    var: apache_parent_pids
+  when: debug
+
+- name: Initialize apache_processes_raw
   ansible.builtin.set_fact:
     apache_processes_raw: []
   when: apache_all_processes_raw | length > 0
@@ -93,7 +98,140 @@
   when: apache_all_processes_raw | length > 0 and apache_parent_pids | length > 0
   no_log: "{{ not log }}"
 
-- name: Debug final apache_processes_raw
+- name: Debug apache_processes_raw
   ansible.builtin.debug:
     var: apache_processes_raw
-  # when: debug
+  #when: debug
+
+- name: Parse Apache configuration
+  apache_config_parser:
+    path: "{{ item.default_config_file }}"
+    configroot: "{{ item.config_dir }}"
+  register: apache_config_raw
+  when: item.default_config_file != 'unknown' and item.config_dir != 'unknown'
+  loop: "{{ apache_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+
+- name: Debug apache_config_raw
+  ansible.builtin.debug:
+    var: apache_config_raw
+  when: debug
+
+- name: Attach pid in apache_config
+  ansible.builtin.set_fact:
+    apache_config: >-
+      {{
+        apache_config | default({}) | combine({
+          (item.item.pid | string): {
+            'config': item | default([])
+          }
+        })
+      }}
+  loop: "{{ apache_config_raw.results }}"
+  loop_control:
+    label: "{{ item.item.pid }}"
+
+- name: Debug apache_config
+  ansible.builtin.debug:
+    var: apache_config
+  when: debug
+
+- name: Initialize apache_processes
+  ansible.builtin.set_fact:
+    apache_processes: []
+    cacheable: true
+
+- name: Merge all apache instances data
+  ansible.builtin.set_fact:
+    cacheable: true
+    apache_processes: >-
+      {{
+        apache_processes | default([]) +
+        [{
+          'pid': item.pid,
+          'children_pids': item.children_pids,
+          'process_user': item.process_user,
+          'process_user_homedir': item.process_user_homedir,
+          'type': "apache",
+          'binary': item.binary,
+          'cmd': item.cmd,
+          'default_config_dir': item.default_config_dir,
+          'default_config_file': item.default_config_file,
+          'config_dir': item.config_dir,
+          'config': apache_config[item.pid].config | default([])
+        }]
+      }}
+  loop: "{{ apache_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  no_log: "{{ not log }}"
+
+- name: Debug apache_processes
+  ansible.builtin.debug:
+    var: apache_processes
+  when: debug
+
+- name: Extract documentroots
+  ansible.builtin.set_fact:
+    documentroots: "{{ docroots | from_yaml }}"
+  vars:
+    docroots: >-
+      {%- set ns = namespace(output=[]) -%}
+      {%- for proc in apache_processes -%}
+        {%- set roots = [] -%}
+        {%- if proc.config is defined and proc.config.config_data is defined -%}
+          {%- if proc.config.config_data.documentroot is defined -%}
+            {%- set _ = roots.append(proc.config.config_data.documentroot) -%}
+          {%- endif -%}
+          {%- if proc.config.config_data.VirtualHost is defined -%}
+            {%- for vhost in proc.config.config_data.VirtualHost.values() -%}
+              {%- if vhost.documentroot is defined -%}
+                {%- set _ = roots.append(vhost.documentroot) -%}
+              {%- endif -%}
+            {%- endfor -%}
+          {%- endif -%}
+        {%- endif -%}
+        {%- set _ = ns.output.append(roots) -%}
+      {%- endfor -%}
+      {{ ns.output }}
+
+- name: Debug documentroots
+  ansible.builtin.debug:
+    var: 
+  #when: debug
+
+- name: Scan for PHP files in DocumentRoot directories
+  ansible.builtin.find:
+    paths: "{{ item }}"
+    patterns: "*.php"
+    recurse: true
+    file_type: file
+  register: php_files_scan
+  loop: "{{ documentroots | default([]) }}"
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Count PHP files
+  ansible.builtin.set_fact:
+    php_files_count: "{{ php_files_count | default(0) + item.matched | default(0) }}"
+  loop: "{{ php_files_scan.results | default([]) }}"
+  no_log: "{{ not log }}"
+
+- name: Debug php_files_count
+  ansible.builtin.debug:
+    var: php_files_count
+  #when: debug
+
+- name: Count PHP files
+  ansible.builtin.set_fact:
+    apache_has_php: "{{ php_files_count | default(0) > 0 }}"
+    cacheable: true
+
+# ------------------------- PHP -------------------------
+
+- name: Collects information from PHP
+  ansible.builtin.include_tasks:
+    file: php.yaml
+  when: apache_has_php
+

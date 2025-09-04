@@ -1,0 +1,13 @@
+- name: Parse PHP configurations
+  php_config_parser:
+  register: php_config_raw
+
+- name: Debug php_config_raw
+  ansible.builtin.debug:
+    var: php_config_raw
+  when: debug
+
+- name: Create PHP facts
+  ansible.builtin.set_fact:
+    php_info: php_config_raw
+    cacheable: true
