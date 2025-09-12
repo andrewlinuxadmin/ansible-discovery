@@ -1,0 +1,216 @@
+# Multi-stage Containerfile for Grafana with Custom Plugin
+# Stage 1: Build the Grafana plugin
+FROM registry.access.redhat.com/ubi9/nodejs-18:latest AS plugin-builder
+
+# Metadata for builder stage
+LABEL stage="plugin-builder" \
+      description="Build stage for Grafana JSON Tree Panel plugin"
+
+# Switch to root for package installation
+USER root
+
+# Install required build tools
+RUN dnf update -y && \
+    dnf install -y git python3 make gcc-c++ && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+# Create working directory with correct permissions
+WORKDIR /plugin-src
+RUN chown -R 1001:1001 /plugin-src
+
+# Create plugin output directory and set permissions
+RUN mkdir -p /plugin-dist && \
+    chown -R 1001:1001 /plugin-dist
+
+# Switch back to default user
+USER 1001
+
+# Copy plugin source code
+COPY grafana-json-tree-panel/package*.json ./
+COPY grafana-json-tree-panel/tsconfig.json ./
+COPY grafana-json-tree-panel/webpack.config.js ./
+COPY grafana-json-tree-panel/.eslintrc.js ./
+COPY grafana-json-tree-panel/.prettierrc.js ./
+COPY grafana-json-tree-panel/jest.config.js ./
+COPY grafana-json-tree-panel/src/ ./src/
+
+# Install dependencies and build plugin
+RUN npm ci --legacy-peer-deps && \
+    npm run build-webpack
+
+# Create plugin directory structure with correct ID
+RUN mkdir -p /plugin-dist/andrewlinuxadmin-json-tree-panel && \
+    cp -r dist/* /plugin-dist/andrewlinuxadmin-json-tree-panel/ && \
+    cp src/plugin.json /plugin-dist/andrewlinuxadmin-json-tree-panel/ && \
+    mkdir -p /plugin-dist/andrewlinuxadmin-json-tree-panel/img
+
+# Create plugin logo
+RUN cat > /plugin-dist/andrewlinuxadmin-json-tree-panel/img/logo.svg << 'EOF'
+<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+  <rect width="40" height="40" fill="#f39c12" rx="4"/>
+  <text x="20" y="25" text-anchor="middle" fill="white" font-family="Arial" font-size="14" font-weight="bold">JSON</text>
+</svg>
+EOF
+
+# Stage 2: Main Grafana container
+FROM registry.access.redhat.com/ubi9/ubi:9.3 AS grafana-runtime
+
+# Metadata
+LABEL name="ansible-discovery-grafana" \
+      version="v1b" \
+      description="Grafana with Ansible Discovery JSON Tree Panel Plugin" \
+      maintainer="Ansible Discovery Team" \
+      summary="Grafana server with custom plugin for Ansible Discovery data visualization" \
+      io.k8s.description="Grafana server with Ansible Discovery JSON Tree Panel Plugin" \
+      io.k8s.display-name="Ansible Discovery Grafana Server" \
+      io.openshift.tags="grafana,ansible,discovery,visualization,json"
+
+# Install EPEL and Grafana
+RUN dnf update -y && \
+    dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
+    dnf install -y fontconfig freetype && \
+    echo -e "[grafana]\n\
+name=grafana\n\
+baseurl=https://rpm.grafana.com\n\
+repo_gpgcheck=1\n\
+enabled=1\n\
+gpgcheck=1\n\
+gpgkey=https://rpm.grafana.com/gpg.key\n\
+sslverify=1\n\
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt" > /etc/yum.repos.d/grafana.repo && \
+    dnf install -y grafana && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+# Create grafana user and directories (user already exists from package)
+RUN mkdir -p /usr/share/grafana/data/plugins /var/log/grafana /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /etc/grafana/dashboards && \
+    chown -R grafana:grafana /usr/share/grafana/data /var/log/grafana /etc/grafana/provisioning /etc/grafana/dashboards
+
+# Copy built plugin from builder stage
+COPY --from=plugin-builder --chown=grafana:grafana /plugin-dist/ /usr/share/grafana/data/plugins/
+
+# Copy provisioning files for datasources and dashboards
+COPY --chown=grafana:grafana provisioning/ /etc/grafana/provisioning/
+
+# Copy dashboard files
+COPY --chown=grafana:grafana dashboard-*.json /etc/grafana/dashboards/
+
+# Configure Grafana to allow unsigned plugins
+RUN sed -i '/^\[plugins\]/a allow_loading_unsigned_plugins = andrewlinuxadmin-json-tree-panel' /etc/grafana/grafana.ini
+
+# Create plugin installation script
+RUN cat > /usr/local/bin/install-plugins.sh << 'EOF' && \
+    chmod +x /usr/local/bin/install-plugins.sh
+#!/bin/bash
+set -e
+
+echo "=== GRAFANA PLUGIN INSTALLATION ==="
+
+# Install plugins specified in GF_INSTALL_PLUGINS environment variable
+if [ -n "$GF_INSTALL_PLUGINS" ]; then
+    echo "Installing Grafana plugins: $GF_INSTALL_PLUGINS"
+    IFS=',' read -ra PLUGINS <<< "$GF_INSTALL_PLUGINS"
+    
+    for plugin in "${PLUGINS[@]}"; do
+        plugin=$(echo "$plugin" | xargs)  # trim whitespace
+        if [ -n "$plugin" ]; then
+            echo "Installing critical plugin: $plugin"
+            if grafana-cli plugins install "$plugin"; then
+                echo "✅ Successfully installed plugin: $plugin"
+            else
+                echo "❌ CRITICAL ERROR: Failed to install essential plugin: $plugin"
+                echo "❌ Container build should be considered FAILED"
+                # For critical plugins, we should fail the startup
+                if [[ "$plugin" == "yesoreyeram-infinity-datasource" ]]; then
+                    echo "❌ Infinity datasource plugin is essential for Ansible Discovery"
+                    exit 1
+                fi
+            fi
+        fi
+    done
+    
+    # Ensure correct ownership of plugin directory
+    chown -R grafana:grafana /var/lib/grafana/plugins 2>/dev/null || true
+    chown -R grafana:grafana /usr/share/grafana/data/plugins 2>/dev/null || true
+    
+    # List installed plugins for verification
+    echo "=== INSTALLED PLUGINS VERIFICATION ==="
+    ls -la /usr/share/grafana/data/plugins/ || true
+    echo "=== END VERIFICATION ==="
+    
+else
+    echo "⚠️ No plugins specified in GF_INSTALL_PLUGINS"
+fi
+
+echo "✅ Plugin installation completed successfully"
+EOF
+
+# Create entrypoint script
+RUN cat > /usr/local/bin/entrypoint.sh << 'EOF' && \
+    chmod +x /usr/local/bin/entrypoint.sh
+#!/bin/bash
+set -e
+
+echo "Starting Grafana entrypoint..."
+
+# Configure MongoDB Proxy URL from environment variable
+echo "=== CONFIGURING MONGODB PROXY URL ==="
+MONGODB_PROXY_URL=${MONGODB_PROXY_URL:-"http://localhost:8000"}
+echo "Using MongoDB Proxy URL: $MONGODB_PROXY_URL"
+
+# Function to replace URLs in files
+replace_urls() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        echo "Updating URLs in $file"
+        sed -i "s|http://localhost:8000|$MONGODB_PROXY_URL|g" "$file"
+    else
+        echo "Warning: File $file not found"
+    fi
+}
+
+# Update datasource configuration
+replace_urls "/etc/grafana/provisioning/datasources/datasource.yaml"
+
+# Update dashboard configurations
+replace_urls "/etc/grafana/dashboards/dashboard-host.json"
+replace_urls "/etc/grafana/dashboards/dashboard-explorer.json"
+
+echo "✅ MongoDB Proxy URL configuration completed"
+
+# Install plugins if specified
+/usr/local/bin/install-plugins.sh
+
+echo "Starting Grafana server..."
+exec grafana-server --config=/etc/grafana/grafana.ini "$@"
+EOF
+
+# Set working directory
+WORKDIR /usr/share/grafana
+
+# Grafana binaries are already in PATH from package installation
+
+# Switch to grafana user
+USER grafana
+
+# Expose Grafana port
+EXPOSE 3000
+
+# Environment variables
+ENV GF_PATHS_CONFIG=/etc/grafana/grafana.ini
+ENV GF_PATHS_DATA=/usr/share/grafana/data
+ENV GF_PATHS_HOME=/usr/share/grafana
+ENV GF_PATHS_LOGS=/var/log/grafana
+ENV GF_PATHS_PLUGINS=/usr/share/grafana/data/plugins
+ENV GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+ENV GF_SECURITY_ADMIN_PASSWORD=redhat
+ENV GF_INSTALL_PLUGINS=yesoreyeram-infinity-datasource
+ENV MONGODB_PROXY_URL=http://localhost:8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
+
+# Run Grafana via entrypoint script
+CMD ["/usr/local/bin/entrypoint.sh"]

@@ -1,0 +1,54 @@
+# Port collection tasks for Ansible Discovery
+# This file contains tasks for collecting listening ports information
+# with fallback support for systems without community.general compatibility
+
+- name: Collect active TCP/UDP ports using community.general
+  community.general.listen_ports_facts: {}
+  failed_when: false
+  register: ports_collection_result
+
+- name: Fallback - Collect ports manually using /proc/net
+  ansible.builtin.shell: |
+    # Collect TCP listening ports from /proc/net/tcp
+    echo "TCP_PORTS:"
+    awk 'NR>1 && $4=="0A" {
+      port = strtonum("0x" substr($2, index($2, ":")+1, 4))
+      printf "{\"address\":\"0.0.0.0\",\"port\":%d,\"protocol\":\"tcp\",\"stime\":\"unknown\"}\n", port
+    }' /proc/net/tcp 2>/dev/null | head -20
+
+    # Collect UDP ports from /proc/net/udp
+    echo "UDP_PORTS:"
+    awk 'NR>1 {
+      port = strtonum("0x" substr($2, index($2, ":")+1, 4))
+      printf "{\"address\":\"0.0.0.0\",\"port\":%d,\"protocol\":\"udp\",\"stime\":\"unknown\"}\n", port
+    }' /proc/net/udp 2>/dev/null | head -20
+  args:
+    executable: /bin/bash
+  register: ports_manual
+  failed_when: false
+  changed_when: false
+  no_log: "{{ not log | default(false) }}"
+
+- name: Parse manual port collection results
+  ansible.builtin.set_fact:
+    manual_ports_parsed: >-
+      {{
+        (ports_manual.stdout_lines | default([]) |
+         select('match', '^{.*}$') |
+         map('from_json') |
+         list)
+      }}
+  when:
+    - ports_manual is defined
+    - ports_manual.stdout_lines is defined
+    - ports_manual.stdout_lines | length > 0
+
+- name: Set ports facts from manual collection
+  ansible.builtin.set_fact:
+    tcp_listen: "{{ manual_ports_parsed | selectattr('protocol', 'equalto', 'tcp') | list }}"
+    udp_listen: "{{ manual_ports_parsed | selectattr('protocol', 'equalto', 'udp') | list }}"
+    cacheable: true
+  when:
+    - ports_collection_result is failed or ansible_facts.tcp_listen is not defined
+    - manual_ports_parsed is defined
+    - manual_ports_parsed | length > 0

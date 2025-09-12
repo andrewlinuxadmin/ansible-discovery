@@ -1,0 +1,91 @@
+# Virtual environment activation script
+activate
+
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+
+# Ansible generated files
+**/.ansible/
+**/.ansible_async/
+**/ansible-lint
+*.retry
+
+# IDE and editor files
+**/.vscode/
+**/.idea/
+*.swp
+*.swo
+*~
+
+# Local Snapshots (VS Code extension)
+**/.snapshots/
+
+# Temporary files
+**/.temp/
+**/.tmp/
+**/.lock/
+*.tmp
+# Containers
+*.log
+
+# Node.js dependencies and build artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+*.tgz
+dist/
+build/
+.npm/
+.yarn/
+.eslintcache
+
+# Grafana JSON Tree Panel development
+.vscode/
+
+# OS generated files
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment specific
+python-3.9-ansible-2.14/
+venv/
+.env
+.venv/
+
+# Git repository management
+.github/copilot-instructions.md
+
+# Ansible collections (downloaded dependencies)
+playbooks/collections/
+
+# Local inventory file (contains sensitive data)
+playbooks/inventory
+
+# Dashboard backup files
+grafana/*.backup_*
+grafana/*.json.backup_*
+grafana/dashboard-*.json.backup_*
+
+# Test result files  
+grafana/results.json
+grafana/test_results_*.json
+grafana/*_test_output.txt
+
+ignored

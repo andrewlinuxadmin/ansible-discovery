@@ -1,0 +1,9 @@
+# Web framework for MongoDB proxy
+sanic==23.12.1
+
+# MongoDB async driver (latest compatible versions)
+pymongo==4.14.1
+motor==3.7.1
+
+# HTTP client for health checks (use system version)
+requests

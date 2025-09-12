@@ -1,0 +1,30 @@
+{
+  "type": "panel",
+  "name": "JSON Tree Panel",
+  "id": "andrewlinuxadmin-json-tree-panel",
+  "info": {
+    "description": "A panel that displays JSON data in an interactive tree view with expand/collapse functionality",
+    "author": {
+      "name": "Andrew Carlos",
+      "email": "andre.carlos@redhat.com"
+    },
+    "keywords": ["json", "tree", "collapse", "expand", "hierarchy"],
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "links": [
+      {"name": "GitHub", "url": "https://github.com/andrewlinuxadmin/ansible-discovery"}
+    ],
+    "screenshots": [],
+    "version": "1.0.0-build-1757102036",
+    "updated": "2025-09-05"
+  },
+  "includes": [
+    {"type": "panel", "name": "JSON Tree Panel"}
+  ],
+  "dependencies": {
+    "grafanaDependency": ">=8.0.0",
+    "plugins": []
+  }
+}

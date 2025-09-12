@@ -1,0 +1,85 @@
+- name: Parse PHP configurations
+  php_config_parser:
+  register: php_config_raw
+  no_log: "{{ not log }}"
+
+- name: Debug php_config_raw
+  ansible.builtin.debug:
+    var: php_config_raw
+  when: debug
+
+- name: Detect system PHP binaries
+  ansible.builtin.shell: |
+    for php_path in /usr/bin/php /usr/bin/php7 /usr/bin/php8 /opt/remi/php*/root/usr/bin/php; do
+      if [ -x "$php_path" ]; then
+        echo "$php_path"
+      fi
+    done
+  register: system_php_check
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Set PHP binaries list
+  ansible.builtin.set_fact:
+    php_binaries: "{{ system_php_check.stdout_lines | default([]) | unique }}"
+
+- name: Debug detected PHP binaries
+  ansible.builtin.debug:
+    var: php_binaries
+  when: debug
+
+- name: Get PHP version and loaded modules/extensions
+  ansible.builtin.shell: |
+    set -o pipefail
+    if [ -x "{{ item }}" ]; then
+      VERSION=$("{{ item }}" -v 2>/dev/null | head -1 | sed 's/PHP \([0-9.]*\).*/\1/' || echo "unknown")
+      SAPI=$("{{ item }}" -v 2>/dev/null | head -1 | sed 's/.*(\([^)]*\)).*/\1/' || echo "unknown")
+      INI_FILE=$("{{ item }}" --ini 2>/dev/null | head -1 || echo "none")
+      # Get modules as newline-separated and convert to JSON array
+      "{{ item }}" -m 2>/dev/null | grep -v '^\[' | grep -v '^$' | sort > /tmp/php_modules_$$.txt || touch /tmp/php_modules_$$.txt
+      MODULES_ARRAY=$(awk 'BEGIN{printf "["} {if(NR>1) printf ","; printf "\"%s\"", $0} END{printf "]"}' /tmp/php_modules_$$.txt)
+      EXTENSIONS_COUNT=$(wc -l < /tmp/php_modules_$$.txt || echo "0")
+      # Get Zend extensions
+      "{{ item }}" -m 2>/dev/null | grep '^\[Zend' -A 1000 | grep -v '^\[' | grep -v '^$' | sort > /tmp/php_zend_$$.txt 2>/dev/null || touch /tmp/php_zend_$$.txt
+      ZEND_ARRAY=$(awk 'BEGIN{printf "["} {if(NR>1) printf ","; printf "\"%s\"", $0} END{printf "]"}' /tmp/php_zend_$$.txt)
+      # Clean up temp files
+      rm -f /tmp/php_modules_$$.txt /tmp/php_zend_$$.txt
+      echo "{\"binary\":\"{{ item }}\", \"version\":\"$VERSION\", \"sapi\":\"$SAPI\", \"ini_file\":\"$INI_FILE\", \"modules\":$MODULES_ARRAY, \"extensions_count\":$EXTENSIONS_COUNT, \"zend_extensions\":$ZEND_ARRAY}"
+    else
+      echo "{\"binary\":\"{{ item }}\", \"version\":\"not_executable\", \"sapi\":\"unknown\", \"ini_file\":\"none\", \"modules\":[], \"extensions_count\":0, \"zend_extensions\":[]}"
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ php_binaries }}"
+  register: php_info_raw
+  changed_when: false
+  failed_when: false
+  no_log: "{{ not log }}"
+
+- name: Parse PHP information
+  ansible.builtin.set_fact:
+    php_binaries_info: >-
+      {{ php_binaries_info | default({}) | combine({
+        (item.item): (item.stdout | from_json)
+      }) }}
+  loop: "{{ php_info_raw.results }}"
+  when: item.stdout is defined and item.stdout != ""
+  no_log: "{{ not log }}"
+
+- name: Debug php_binaries_info
+  ansible.builtin.debug:
+    var: php_binaries_info
+  when: debug
+
+- name: Create consolidated PHP facts
+  ansible.builtin.set_fact:
+    cacheable: true
+    php_info:
+      config_files: "{{ php_config_raw }}"
+      binaries: "{{ php_binaries_info | default({}) }}"
+
+- name: Debug php_info
+  ansible.builtin.debug:
+    var: php_info
+  when: debug

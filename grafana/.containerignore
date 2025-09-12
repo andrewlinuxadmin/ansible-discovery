@@ -1,0 +1,52 @@
+# .containerignore for Grafana Container Build
+# Exclude unnecessary files from build context
+
+# Plugin development files (not needed in final image)
+grafana-json-tree-panel/node_modules/
+grafana-json-tree-panel/coverage/
+grafana-json-tree-panel/.git/
+grafana-json-tree-panel/*.log
+
+# Documentation
+*.md
+docs/
+examples.md
+grafana-json-tree-panel/README.md
+grafana-json-tree-panel/img/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# Test files
+test/
+tests/
+*_test.*
+*.test.*
+
+# Build artifacts (will be rebuilt in container)
+grafana-json-tree-panel/dist/

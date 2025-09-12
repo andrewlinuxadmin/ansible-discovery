@@ -1,0 +1,21 @@
+# Configuração do flake8 para testes unitários
+# Ignora algumas regras específicas para manter a legibilidade dos testes
+
+[flake8]
+max-line-length = 88
+ignore = E501,E402,W503,W504
+
+# Exclude common directories
+exclude =
+    __pycache__,
+    .git,
+    .venv,
+    venv,
+    .tox,
+    dist,
+    build,
+    *.egg
+
+# Per-file ignores for specific cases
+per-file-ignores =
+    test_*.py:E402,E501

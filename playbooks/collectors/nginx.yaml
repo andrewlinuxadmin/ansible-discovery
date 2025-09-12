@@ -1,0 +1,182 @@
+- name: NGINX commands
+  ansible.builtin.set_fact:
+    nginx_defaults:
+      "RedHat":
+        config_file: "/etc/nginx/nginx.conf"
+      "Debian":
+        config_file: "/etc/nginx/nginx.conf"
+      "Suse":
+        config_file: "/etc/nginx/nginx.conf"
+  no_log: "{{ not log }}"
+
+- name: Classify all NGINX processes and build structured list
+  ansible.builtin.set_fact:
+    nginx_all_processes_raw: >-
+      {{
+        nginx_all_processes_raw | default([]) +
+        [{
+          'cmd': item.args,
+          'pid': item.pid,
+          'ppid': item.ppid,
+          'process_user': item.user,
+          'process_user_homedir': item.homedir,
+          'type': "nginx",
+          'binary': item.args.split()[0],
+          'config_file': config_file[0] if config_file | length > 0 else nginx_defaults[ansible_os_family].config_file | default("unknown")
+        }]
+      }}
+  vars:
+    config_file: "{{ item.args | regex_search('-c\\s+([^ ]+)', '\\1') | default([]) }}"
+  loop: "{{ processes | selectattr('command', 'match', '^nginx:') | list }}"
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_all_processes_raw
+  ansible.builtin.debug:
+    var: nginx_all_processes_raw
+  when: debug
+
+- name: Find all nginx parent processes (multiple instances support)
+  ansible.builtin.set_fact:
+    nginx_parent_pids: >-
+      {{
+        nginx_parent_candidates if nginx_parent_candidates | length > 0
+        else nginx_standalone_processes
+      }}
+  vars:
+    # Todos os PIDs e PPIDs dos processos nginx
+    nginx_pids: "{{ nginx_all_processes_raw | map(attribute='pid') | list }}"
+    nginx_ppids: "{{ nginx_all_processes_raw | map(attribute='ppid') | unique | list }}"
+
+    # PIDs que são pais de outros processos nginx (instâncias com workers)
+    nginx_parent_candidates: "{{ nginx_ppids | intersect(nginx_pids) }}"
+
+    # Processos nginx que não são filhos de outros nginx (standalone)
+    nginx_standalone_processes: >-
+      {{
+        nginx_all_processes_raw |
+        rejectattr('ppid', 'in', nginx_pids) |
+        map(attribute='pid') | list
+      }}
+  when: nginx_all_processes_raw | length > 0
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_parent_pids
+  ansible.builtin.debug:
+    var: nginx_parent_pids
+  when: debug
+
+- name: Initialize nginx_processes_raw
+  ansible.builtin.set_fact:
+    nginx_processes_raw: []
+  when: nginx_all_processes_raw | length > 0
+
+- name: Build each nginx instance with children PIDs
+  ansible.builtin.set_fact:
+    nginx_processes_raw: >-
+      {{
+        nginx_processes_raw + [
+          (nginx_all_processes_raw | selectattr('pid', 'equalto', item) | first) |
+          combine({'children_pids': children_pids})
+        ]
+      }}
+  vars:
+    children_pids: "{{ nginx_all_processes_raw | selectattr('ppid', 'equalto', item) | map(attribute='pid') | list }}"
+  loop: "{{ nginx_parent_pids }}"
+  when: nginx_all_processes_raw | length > 0 and nginx_parent_pids | length > 0
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_processes_raw
+  ansible.builtin.debug:
+    var: nginx_processes_raw
+  when: debug
+
+- name: Parse nginx configuration
+  nginx_config_parser:
+    path: "{{ item.config_file }}"
+    include_comments: false
+  register: nginx_config_raw
+  when: item.config_file != 'unknown'
+  loop: "{{ nginx_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+
+- name: Debug nginx_config_raw
+  ansible.builtin.debug:
+    var: nginx_config_raw
+  when: debug
+
+- name: Attach pid in nginx_config
+  ansible.builtin.set_fact:
+    nginx_config: >-
+      {{
+        nginx_config | default({}) | combine({
+          (item.item.pid | string): {
+            'config': item | default([])
+          }
+        })
+      }}
+  loop: "{{ nginx_config_raw.results }}"
+  loop_control:
+    label: "{{ item.item.pid }}"
+
+- name: Debug nginx_config
+  ansible.builtin.debug:
+    var: nginx_config
+  when: debug
+
+- name: Initialize nginx_processes
+  ansible.builtin.set_fact:
+    nginx_processes: []
+    cacheable: true
+
+- name: Merge all nginx instances data
+  ansible.builtin.set_fact:
+    cacheable: true
+    nginx_processes: >-
+      {{
+        nginx_processes | default([]) +
+        [{
+          'pid': item.pid,
+          'children_pids': item.children_pids,
+          'process_user': item.process_user,
+          'process_user_homedir': item.process_user_homedir,
+          'type': "nginx",
+          'binary': item.binary,
+          'cmd': item.cmd,
+          'config_file': item.config_file,
+          'config': nginx_config[item.pid].config.config | default([])
+        }]
+      }}
+  loop: "{{ nginx_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  no_log: "{{ not log }}"
+
+- name: Debug nginx_processes
+  ansible.builtin.debug:
+    var: nginx_processes
+  when: debug
+
+- name: Detect PHP-FPM configuration in NGINX
+  ansible.builtin.set_fact:
+    cacheable: true
+    nginx_has_php_fpm: >-
+      {{
+        nginx_processes | selectattr('config.config.nginx', 'defined') |
+        map(attribute='config.config.nginx') |
+        map('to_json') | join(' ') |
+        regex_search('fastcgi_pass|fastcgi_index|\.php\$|php-fpm') is not none
+      }}
+  when: nginx_processes | length > 0
+
+- name: Debug nginx_has_php_fpm
+  ansible.builtin.debug:
+    var: nginx_has_php_fpm
+  when: debug
+
+# ------------------------- PHP -------------------------
+
+- name: Collects information from PHP
+  ansible.builtin.include_tasks:
+    file: php.yaml
+  when: nginx_has_php_fpm

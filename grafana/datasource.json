@@ -1,0 +1,19 @@
+{
+  "name": "Ansible-Discovery-MongoDB",
+  "type": "yesoreyeram-infinity-datasource",
+  "access": "proxy",
+  "url": "http://localhost:8000",
+  "isDefault": true,
+  "jsonData": {
+    "auth_method": "none",
+    "customHealthCheckEnabled": true,
+    "customHealthCheckUrl": "http://localhost:8000/healthz",
+    "global_queries": [],
+    "httpHeaderName1": "Content-Type",
+    "oauthPassThru": false,
+    "pdcInjected": false
+  },
+  "secureJsonData": {
+    "httpHeaderValue1": "application/json"
+  }
+}

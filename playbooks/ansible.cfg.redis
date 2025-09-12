@@ -1,0 +1,23 @@
+[defaults]
+inventory=./inventory
+collections_path = ./collections
+filter_plugins = ./filter_plugins
+library = ./library
+cache_plugins = ./cache_plugins
+host_key_checking = False
+stdout_callback = yaml
+retry_files_enabled = False
+interpreter_python = auto_silent
+
+fact_caching = hybrid_memory_redisjson_cache
+fact_caching_timeout = 0
+fact_caching_connection = redis://localhost:6379/0
+fact_caching_prefix = ""
+
+[inventory]
+# Define a ordem de descoberta de Python: tenta Python 3 primeiro, depois Python 2.7
+# Se nenhum funcionar, usa 'auto' para detectar automaticamente
+enable_plugins = host_list, script, auto, yaml, ini, toml
+
+[ssh_connection]
+ssh_args = -o ControlMaster=auto -o ControlPersist=60s -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no

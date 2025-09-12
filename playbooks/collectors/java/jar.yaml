@@ -1,0 +1,170 @@
+- name: Possible JAR paths
+  ansible.builtin.set_fact:
+    possible_jar_paths: >-
+      {{
+        possible_jar_paths | default({}) | combine({item.pid: (paths | from_yaml)})
+      }}
+  vars:
+    possible_jar_root_paths:
+      - "" # for root filesystem
+      - "{{ item.process_user_homedir }}"
+      - "/app"
+      - "/opt"
+      - "/opt/app"
+      - "/opt/java"
+      - "/org"
+      - "/usr/local"
+      - "/usr/local/bin"
+      - "/var/lib"
+      - "/var/"
+      - "/var/www"
+    paths: >-
+      {% set is_absolute_path = item.jar_file.startswith('/') %}
+      {% set paths = [] %}
+      {% if is_absolute_path %}
+        {% set _ = paths.append(item.jar_file) %}
+      {% else %}
+        {% for possible_path in possible_jar_root_paths %}
+          {% set _ = paths.append(
+            possible_path + '/' + item.jar_file
+          ) %}
+        {% endfor %}
+      {% endif %}
+      {{ paths }}
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "{{ item.pid }}"
+  no_log: "{{ not log }}"
+
+- name: Debug possible_jar_paths
+  ansible.builtin.debug:
+    var: possible_jar_paths
+  when: debug is defined and debug
+
+- name: Find first existing JAR path using filter file_exists
+  ansible.builtin.set_fact:
+    jar_resolved_paths: >-
+      {{
+        jar_resolved_paths | default({}) |
+        combine({
+          item.pid: {
+            "path": found_path,
+            "found": (found_path != 'unknown')
+          }
+        })
+      }}
+  vars:
+    paths_to_check: "{{ possible_jar_paths[item.pid] | default([]) }}"
+    found_path: >-
+      {%- set found = [] -%}
+      {%- for path in paths_to_check -%}
+        {%- if path | file_exists and found | length == 0 -%}
+          {%- set _ = found.append(path) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ found | first | default('unknown') }}
+  loop: "{{ java_processes_raw }}"
+  loop_control:
+    label: "PID: {{ item.pid }} | JAR: {{ item.jar_file }}"
+  no_log: "{{ not log }}"
+
+- name: Debug jar_resolved_paths
+  ansible.builtin.debug:
+    var: jar_resolved_paths
+  when: debug
+
+- name: Create temp directory for JAR extraction
+  ansible.builtin.file:
+    path: "/tmp/jar_{{ item.pid }}"
+    state: directory
+    mode: '0755'
+  loop: "{{ java_processes_raw }}"
+  when: jar_resolved_paths[item.pid]['found']
+  changed_when: false
+  no_log: "{{ not log }}"
+
+- name: Extract MANIFEST.MF from JAR using unarchive
+  ansible.builtin.unarchive:
+    src: "{{ jar_resolved_paths[item.pid]['path'] }}"
+    dest: "/tmp/jar_{{ item.pid }}"
+    remote_src: true
+    include:
+      - "META-INF/MANIFEST.MF"
+  loop: "{{ java_processes_raw }}"
+  when: jar_resolved_paths[item.pid]['found']
+  register: jar_extract
+  failed_when: false
+  changed_when: false
+  ignore_errors: true
+  no_log: "{{ not log }}"
+
+- name: Debug jar_extract
+  ansible.builtin.debug:
+    var: jar_extract
+  when: debug
+
+- name: Read MANIFEST.MF content
+  ansible.builtin.slurp:
+    src: "/tmp/jar_{{ item.pid }}/META-INF/MANIFEST.MF"
+  loop: "{{ java_processes_raw }}"
+  when: jar_resolved_paths[item.pid]['found']
+  register: manifest_content
+  failed_when: false
+  changed_when: false
+  ignore_errors: true
+  no_log: "{{ not log }}"
+
+- name: Debug manifest_content
+  ansible.builtin.debug:
+    var: manifest_content
+  when: debug
+
+- name: Clean up temp directories
+  ansible.builtin.file:
+    path: "/tmp/jar_{{ item.pid }}"
+    state: absent
+  loop: "{{ java_processes_raw }}"
+  when: jar_resolved_paths[item.pid]['found']
+  changed_when: false
+  ignore_errors: true
+  no_log: "{{ not log }}"
+
+- name: Parse MANIFEST.MF content to JSON
+  ansible.builtin.set_fact:
+    jar_info: >-
+      {{
+        jar_info | default({}) | combine({
+          item.item.pid: {
+            'manifest': (manifest_data | default('unknown') | from_yaml)
+          }
+        })
+      }}
+  vars:
+    manifest_data: >-
+      {% set ns = namespace(manifest_dict={}) %}
+      {% if item.content is defined and not item.failed %}
+        {% set manifest_lines = (item.content | b64decode).splitlines() %}
+        {%- for manifest_line in manifest_lines -%}
+          {% if manifest_line | regex_search('^[^:]+:') %}
+            {% set line = manifest_line | trim %}
+            {% if ':' in line %}
+              {% set parts = line.split(':', 1) %}
+              {% set key = parts[0] | trim %}
+              {% set val = (parts[1] | trim) if parts | length > 1 else '' %}
+              {% set ns.manifest_dict = ns.manifest_dict | combine({key: val}) %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      {% else %}
+        {% set ns.manifest_dict = ns.manifest_dict | combine({'error': 'Failed to read manifest file in jar'}) %}
+      {% endif %}
+      {{ ns.manifest_dict }}
+  loop: "{{ manifest_content.results }}"
+  loop_control:
+    label: "{{ item.item.pid }}"
+  no_log: "{{ not log }}"
+
+- name: Debug jar_info
+  ansible.builtin.debug:
+    var: jar_info
+  when: debug

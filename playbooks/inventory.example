@@ -1,0 +1,30 @@
+[ubuntu]
+ubuntu-20-04 ansible_host=172.16.80.139
+
+[centos]
+centos6 ansible_host=172.16.80.137
+centos7 ansible_host=172.16.80.138
+
+[default_password:children]
+ubuntu
+centos
+
+[el6]
+centos6 ansible_host=172.16.80.137
+
+[fedora]
+fedora42
+
+# --------------------- VARS ---------------------
+
+[all:vars]
+ansible_python_interpreter=auto_silent
+collector_nginx=false
+
+[el6:vars]
+ansible_ssh_common_args='-o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -o KexAlgorithms=+diffie-hellman-group14-sha1 -o Ciphers=+aes128-ctr -o MACs=+hmac-sha1'
+ansible_python_interpreter=/usr/bin/python2.7
+
+[default_password:vars]
+ansible_user=root
+ansible_password=*****

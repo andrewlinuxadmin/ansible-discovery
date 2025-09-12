@@ -1,0 +1,25 @@
+# Configuração global do flake8 para o projeto Ansible Discovery
+# Configuração padrão com tolerância para linhas longas
+
+[flake8]
+max-line-length = 120
+ignore = E501,E203,E402,W503,W504
+
+# Exclude common directories
+exclude =
+    __pycache__,
+    .git,
+    .venv,
+    venv,
+    .tox,
+    dist,
+    build,
+    *.egg,
+    collections,
+    mongodbdata
+
+# Per-file ignores for specific cases
+per-file-ignores =
+    mongodb-proxy/*.py:E501
+    playbooks/library/*.py:E501
+    scripts/*.py:E501

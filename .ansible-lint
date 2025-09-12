@@ -1,0 +1,21 @@
+# Configuração do ansible-lint
+---
+# Lista de regras a serem ignoradas
+skip_list:
+  - line-too-long  # Ignora linhas muito longas
+  - yaml[line-length]  # Ignora comprimento de linha YAML
+
+# Arquivos/diretórios a serem excluídos
+exclude_paths:
+  - .cache/
+  - .github/
+  - collections/
+  - mongodbdata/
+
+# Usar tags específicas
+tags:
+  - skip_ansible_lint
+
+# Configurações adicionais
+warn_list:
+  - experimental  # Avisar sobre recursos experimentais

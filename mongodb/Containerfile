@@ -1,0 +1,105 @@
+# MongoDB Containerfile based on UBI9
+FROM registry.access.redhat.com/ubi9/ubi:9.3
+
+# Metadata
+LABEL name="ansible-discovery-mongodb" \
+      version="v1b" \
+      description="MongoDB 8.0 for Ansible Discovery project" \
+      maintainer="Ansible Discovery Team" \
+      summary="MongoDB 8.0 server for Ansible Discovery data storage" \
+      io.k8s.description="MongoDB 8.0 server for Ansible Discovery project" \
+      io.k8s.display-name="Ansible Discovery MongoDB Server" \
+      io.openshift.tags="mongodb,ansible,discovery,database,nosql"
+
+# Install required packages and MongoDB
+RUN dnf update -y && \
+    dnf install -y --allowerasing curl gnupg && \
+    echo -e "[mongodb-org-8.0]\n\
+name=MongoDB Repository\n\
+baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/8.0/x86_64/\n\
+gpgcheck=1\n\
+enabled=1\n\
+gpgkey=https://www.mongodb.org/static/pgp/server-8.0.asc" > /etc/yum.repos.d/mongodb-org-8.0.repo && \
+    dnf install -y mongodb-org && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+# Create mongodb user and directories
+RUN groupadd -r mongodb && \
+    useradd -r -g mongodb -s /bin/false -M mongodb && \
+    mkdir -p /var/lib/mongodb /var/log/mongodb /etc/mongodb && \
+    chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb /etc/mongodb
+
+# Create MongoDB configuration file
+RUN cat > /etc/mongod.conf << 'EOF'
+# mongod.conf
+
+# for documentation of all options, see:
+#   http://docs.mongodb.org/manual/reference/configuration-options/
+
+# Where to store data
+storage:
+  dbPath: /var/lib/mongodb
+
+# Where to write logging data
+systemLog:
+  destination: file
+  logAppend: true
+  path: /var/log/mongodb/mongod.log
+
+# Network interfaces
+net:
+  port: 27017
+  bindIp: 0.0.0.0
+
+# Process management
+processManagement:
+  timeZoneInfo: /usr/share/zoneinfo
+
+# Security
+security:
+  authorization: disabled
+
+# Operation profiling
+operationProfiling:
+  slowOpThresholdMs: 100
+
+# Replication (disabled for standalone)
+#replication:
+
+# Sharding (disabled for standalone)
+#sharding:
+EOF
+
+# Set permissions for config file
+RUN chown mongodb:mongodb /etc/mongod.conf && \
+    chmod 644 /etc/mongod.conf
+
+# Create data and log directories with proper permissions
+RUN mkdir -p /var/lib/mongodb/data /var/log/mongodb && \
+    chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb && \
+    chmod 755 /var/lib/mongodb /var/log/mongodb
+
+# Switch to mongodb user
+USER mongodb
+
+# Set working directory
+WORKDIR /var/lib/mongodb
+
+# Expose MongoDB port
+EXPOSE 27017
+
+# Environment variables
+ENV MONGO_INITDB_ROOT_USERNAME=""
+ENV MONGO_INITDB_ROOT_PASSWORD=""
+ENV MONGO_INITDB_DATABASE=""
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD ["sh", "-c", "mongosh --eval 'db.adminCommand({ping: 1})' || exit 1"]
+
+# Volume for data persistence
+VOLUME ["/var/lib/mongodb"]
+
+# Run MongoDB
+CMD ["mongod", "--config", "/etc/mongod.conf"]

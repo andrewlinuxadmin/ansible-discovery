@@ -1,0 +1,249 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 7,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 5,
+      "panels": [],
+      "title": "Instructions",
+      "type": "row"
+    },
+    {
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<h4>🔍 Ansible Discovery - Explorer</h4>\n<br/>\n\n<h6><a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[]\">Listar todos</a></h6>\n<br/>\n\n<h6>🖥️ Informações de Sistema</h6>\n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$group&quot;: {&quot;_id&quot;: &quot;$data.ansible_distribution&quot;, &quot;count&quot;: {&quot;$sum&quot;: 1}, &quot;avg_memory_gb&quot;: {&quot;$avg&quot;: {&quot;$divide&quot;: [&quot;$data.ansible_memtotal_mb&quot;, 1024]}}, &quot;avg_cpu_cores&quot;: {&quot;$avg&quot;: &quot;$data.ansible_processor_vcpus&quot;}}}, {&quot;$project&quot;: {&quot;[distribution]&quot;: &quot;$_id&quot;, &quot;host_count&quot;: &quot;$count&quot;, &quot;avg_memory_gb&quot;: {&quot;$round&quot;: [&quot;$avg_memory_gb&quot;, 1]}, &quot;avg_cpu_cores&quot;: {&quot;$round&quot;: [&quot;$avg_cpu_cores&quot;, 0]}, &quot;_id&quot;: 0}}, {&quot;$sort&quot;: {&quot;host_count&quot;: -1}}]\">Distribuição por SO</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;_id&quot;: 0}}, {&quot;$sort&quot;: {&quot;[hostname]&quot;: 1}}]\">Lista de todos os hosts descobertos</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;cpu_cores&quot;: &quot;$data.ansible_processor_vcpus&quot;, &quot;memory_mb&quot;: &quot;$data.ansible_memtotal_mb&quot;, &quot;architecture&quot;: &quot;$data.ansible_architecture&quot;, &quot;_id&quot;: 0}}]\">Recursos de Hardware</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;os&quot;: &quot;$data.ansible_distribution&quot;, &quot;version&quot;: &quot;$data.ansible_distribution_version&quot;, &quot;kernel&quot;: &quot;$data.ansible_kernel&quot;, &quot;uptime_days&quot;: {&quot;$floor&quot;: {&quot;$divide&quot;: [{&quot;$toInt&quot;: &quot;$data.ansible_uptime_seconds&quot;}, 86400]}}, &quot;_id&quot;: 0}}]\">Sistema Operacional</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.tcp_listen&quot;: {&quot;$exists&quot;: true, &quot;$ne&quot;: []}}}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;open_ports&quot;: {&quot;$size&quot;: &quot;$data.tcp_listen&quot;}, &quot;ports_details&quot;: {&quot;$slice&quot;: [&quot;$data.tcp_listen&quot;, 5]}, &quot;_id&quot;: 0}}]\">Portas Abertas</a> | \n<br/><br/>\n<h6>☕ Descoberta Java</h6>\n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.has_java_processes&quot;: true}}, {&quot;$unwind&quot;: &quot;$data.java_processes&quot;}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;java_version&quot;: &quot;$data.java_processes.java_version&quot;, &quot;process_type&quot;: &quot;$data.java_processes.type&quot;, &quot;pid&quot;: &quot;$data.java_processes.pid&quot;, &quot;user&quot;: &quot;$data.java_processes.process_user&quot;, &quot;_id&quot;: 0}}]\">Processos Java</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.java_processes.type&quot;: &quot;tomcat&quot;}}, {&quot;$unwind&quot;: &quot;$data.java_processes&quot;}, {&quot;$match&quot;: {&quot;data.java_processes.type&quot;: &quot;tomcat&quot;}}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;tomcat_version&quot;: &quot;$data.java_processes.tomcat_info.version&quot;, &quot;catalina_home&quot;: &quot;$data.java_processes.home&quot;, &quot;java_version&quot;: &quot;$data.java_processes.java_version&quot;, &quot;pid&quot;: &quot;$data.java_processes.pid&quot;, &quot;_id&quot;: 0}}]\">Servidores Tomcat</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.java_processes.type&quot;: &quot;jboss&quot;}}, {&quot;$unwind&quot;: &quot;$data.java_processes&quot;}, {&quot;$match&quot;: {&quot;data.java_processes.type&quot;: &quot;jboss&quot;}}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;jboss_version&quot;: &quot;$data.java_processes.jboss_info.version&quot;, &quot;jboss_type&quot;: &quot;$data.java_processes.jboss_info.type&quot;, &quot;home_dir&quot;: &quot;$data.java_processes.home&quot;, &quot;java_version&quot;: &quot;$data.java_processes.java_version&quot;, &quot;pid&quot;: &quot;$data.java_processes.pid&quot;, &quot;_id&quot;: 0}}]\">Servidores JBoss</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.java_processes&quot;: {&quot;$exists&quot;: true}}}, {&quot;$unwind&quot;: &quot;$data.java_processes&quot;}, {&quot;$match&quot;: {&quot;data.java_processes.jar_file&quot;: {&quot;$exists&quot;: true, &quot;$ne&quot;: null}}}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;jar_path&quot;: &quot;$data.java_processes.jar_file&quot;, &quot;java_version&quot;: &quot;$data.java_processes.java_version&quot;, &quot;pid&quot;: &quot;$data.java_processes.pid&quot;, &quot;_id&quot;: 0}}]\">JARs Executáveis</a>\n<br/><br/>\n<h6>🌐 Servidores Web</h6>\n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.apache_processes&quot;: {&quot;$exists&quot;: true, &quot;$ne&quot;: []}}}, {&quot;$unwind&quot;: &quot;$data.apache_processes&quot;}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;apache_version&quot;: {&quot;$ifNull&quot;: [&quot;$data.apache_processes.version&quot;, &quot;unknown&quot;]}, &quot;config_file&quot;: &quot;$data.apache_processes.config.file_path&quot;, &quot;pid&quot;: &quot;$data.apache_processes.pid&quot;, &quot;_id&quot;: 0}}]\">Servidores Apache</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.apache_processes&quot;: {&quot;$exists&quot;: true, &quot;$ne&quot;: []}}}, {&quot;$unwind&quot;: &quot;$data.apache_processes&quot;}, {&quot;$match&quot;: {&quot;data.apache_processes.config.config_data.VirtualHost&quot;: {&quot;$exists&quot;: true}}}, {&quot;$addFields&quot;: {&quot;vhosts_array&quot;: {&quot;$objectToArray&quot;: &quot;$data.apache_processes.config.config_data.VirtualHost&quot;}}}, {&quot;$unwind&quot;: &quot;$vhosts_array&quot;}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;vhost_name&quot;: &quot;$vhosts_array.k&quot;, &quot;server_name&quot;: &quot;$vhosts_array.v.servername&quot;, &quot;document_root&quot;: &quot;$vhosts_array.v.documentroot&quot;, &quot;apache_version&quot;: &quot;$data.apache_processes.version&quot;, &quot;_id&quot;: 0}}]\">Virtual Hosts Apache</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.nginx_processes&quot;: {&quot;$exists&quot;: true, &quot;$ne&quot;: []}}}, {&quot;$unwind&quot;: &quot;$data.nginx_processes&quot;}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;nginx_version&quot;: {&quot;$ifNull&quot;: [&quot;$data.nginx_processes.version&quot;, &quot;unknown&quot;]}, &quot;config_file&quot;: &quot;$data.nginx_processes.config.info.main_file&quot;, &quot;pid&quot;: &quot;$data.nginx_processes.pid&quot;, &quot;_id&quot;: 0}}]\">Servidores NGINX</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.php_info&quot;: {&quot;$exists&quot;: true}}}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;php_version&quot;: &quot;$data.php_info.php_summary.php_version&quot;, &quot;main_config&quot;: &quot;$data.php_info.php_summary.main_config&quot;, &quot;memory_limit&quot;: &quot;$data.php_info.php_summary.memory_limit&quot;, &quot;total_extensions&quot;: {&quot;$size&quot;: {&quot;$ifNull&quot;: [&quot;$data.php_info.php_summary.all_extensions&quot;, []]}}, &quot;_id&quot;: 0}}]\">Configurações PHP</a>\n<br/><br/>\n<h6>🔌 Rede e Portas</h6>\n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.tcp_listen&quot;: {&quot;$exists&quot;: true, &quot;$ne&quot;: []}}}, {&quot;$unwind&quot;: &quot;$data.tcp_listen&quot;}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;port&quot;: &quot;$data.tcp_listen.port&quot;, &quot;protocol&quot;: &quot;$data.tcp_listen.protocol&quot;, &quot;service&quot;: &quot;$data.tcp_listen.name&quot;, &quot;address&quot;: &quot;$data.tcp_listen.address&quot;, &quot;_id&quot;: 0}}, {&quot;$sort&quot;: {&quot;port&quot;: 1}}]\">Portas abertas por serviço</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;$or&quot;: [{&quot;data.apache_processes&quot;: {&quot;$exists&quot;: true, &quot;$ne&quot;: []}}, {&quot;data.nginx_processes&quot;: {&quot;$exists&quot;: true, &quot;$ne&quot;: []}}, {&quot;data.php_info&quot;: {&quot;$exists&quot;: true}}]}}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;web_services&quot;: {&quot;$concatArrays&quot;: [{&quot;$cond&quot;: {&quot;if&quot;: {&quot;$gt&quot;: [{&quot;$size&quot;: {&quot;$ifNull&quot;: [&quot;$data.apache_processes&quot;, []]}}, 0]}, &quot;then&quot;: [&quot;Apache&quot;], &quot;else&quot;: []}}, {&quot;$cond&quot;: {&quot;if&quot;: {&quot;$gt&quot;: [{&quot;$size&quot;: {&quot;$ifNull&quot;: [&quot;$data.nginx_processes&quot;, []]}}, 0]}, &quot;then&quot;: [&quot;Nginx&quot;], &quot;else&quot;: []}}, {&quot;$cond&quot;: {&quot;if&quot;: {&quot;$ne&quot;: [&quot;$data.php_info&quot;, null]}, &quot;then&quot;: [&quot;PHP&quot;], &quot;else&quot;: []}}]}, &quot;web_ports&quot;: {&quot;$filter&quot;: {&quot;input&quot;: {&quot;$ifNull&quot;: [&quot;$data.tcp_listen&quot;, []]}, &quot;as&quot;: &quot;port&quot;, &quot;cond&quot;: {&quot;$or&quot;: [{&quot;$eq&quot;: [&quot;$$port.port&quot;, 80]}, {&quot;$eq&quot;: [&quot;$$port.port&quot;, 443]}, {&quot;$and&quot;: [{&quot;$gte&quot;: [&quot;$$port.port&quot;, 8000]}, {&quot;$lte&quot;: [&quot;$$port.port&quot;, 8999]}]}]}}}, &quot;_id&quot;: 0}}, {&quot;$match&quot;: {&quot;$expr&quot;: {&quot;$gt&quot;: [{&quot;$size&quot;: &quot;$web_services&quot;}, 0]}}}]\">Serviços web por porta</a>\n<br/><br/>\n<h6>📊 Análises Agregadas</h6>\n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;memory_gb&quot;: {&quot;$round&quot;: [{&quot;$divide&quot;: [&quot;$data.ansible_memtotal_mb&quot;, 1024]}, 1]}, &quot;java_count&quot;: {&quot;$size&quot;: {&quot;$ifNull&quot;: [&quot;$data.java_processes&quot;, []]}}, &quot;web_services&quot;: {&quot;$add&quot;: [{&quot;$size&quot;: {&quot;$ifNull&quot;: [&quot;$data.apache_processes&quot;, []]}}, {&quot;$size&quot;: {&quot;$ifNull&quot;: [&quot;$data.nginx_processes&quot;, []]}}]}, &quot;_id&quot;: 0}}, {&quot;$match&quot;: {&quot;$or&quot;: [{&quot;java_count&quot;: {&quot;$gt&quot;: 0}}, {&quot;web_services&quot;: {&quot;$gt&quot;: 0}}]}}, {&quot;$sort&quot;: {&quot;memory_gb&quot;: -1}}]\">Análise de Capacidade</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$group&quot;: {&quot;_id&quot;: null, &quot;total_hosts&quot;: {&quot;$sum&quot;: 1}, &quot;java_hosts&quot;: {&quot;$sum&quot;: {&quot;$cond&quot;: [&quot;$data.has_java_processes&quot;, 1, 0]}}, &quot;web_hosts&quot;: {&quot;$sum&quot;: {&quot;$cond&quot;: [{&quot;$or&quot;: [&quot;$data.has_apache_process&quot;, &quot;$data.has_nginx_process&quot;]}, 1, 0]}}, &quot;database_hosts&quot;: {&quot;$sum&quot;: {&quot;$cond&quot;: [{&quot;$or&quot;: [&quot;$data.has_mongodb_process&quot;, &quot;$data.has_mysql_process&quot;, &quot;$data.has_postgresql_process&quot;]}, 1, 0]}}}}]\">Resumo de Hosts por Tipo</a>\n<br/><br/>\n<h6>🛡️ Segurança & Conformidade</h6>\n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.ansible_selinux.status&quot;: {&quot;$exists&quot;: true}}}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;selinux_status&quot;: &quot;$data.ansible_selinux.status&quot;, &quot;selinux_mode&quot;: &quot;$data.ansible_selinux.mode&quot;, &quot;selinux_type&quot;: &quot;$data.ansible_selinux.type&quot;, &quot;_id&quot;: 0}}, {&quot;$sort&quot;: {&quot;selinux_status&quot;: 1}}]\">Status SELinux</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$match&quot;: {&quot;data.tcp_listen&quot;: {&quot;$exists&quot;: true, &quot;$ne&quot;: []}}}, {&quot;$unwind&quot;: &quot;$data.tcp_listen&quot;}, {&quot;$match&quot;: {&quot;data.tcp_listen.port&quot;: {&quot;$in&quot;: [22, 23, 21, 135, 139, 445, 1433, 3389, 5432, 6379]}}}, {&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;port&quot;: &quot;$data.tcp_listen.port&quot;, &quot;service&quot;: &quot;$data.tcp_listen.name&quot;, &quot;address&quot;: &quot;$data.tcp_listen.address&quot;, &quot;_id&quot;: 0}}, {&quot;$sort&quot;: {&quot;port&quot;: 1}}]\">Portas de Risco</a> | \n<a href=\"/d/ansible-discovery-dashboard-explorer/ansible-discovery-explorer?var-mongodb_filter=[{&quot;$project&quot;: {&quot;[hostname]&quot;: {&quot;$replaceAll&quot;: {&quot;input&quot;: &quot;$_id&quot;, &quot;find&quot;: &quot;ansible_facts&quot;, &quot;replacement&quot;: &quot;&quot;}}, &quot;uptime_days&quot;: {&quot;$floor&quot;: {&quot;$divide&quot;: [{&quot;$toInt&quot;: &quot;$data.ansible_uptime_seconds&quot;}, 86400]}}, &quot;needs_reboot&quot;: {&quot;$cond&quot;: {&quot;if&quot;: {&quot;$gt&quot;: [{&quot;$floor&quot;: {&quot;$divide&quot;: [{&quot;$toInt&quot;: &quot;$data.ansible_uptime_seconds&quot;}, 86400]}}, 90]}, &quot;then&quot;: &quot;SIM&quot;, &quot;else&quot;: &quot;NAO&quot;}}, &quot;_id&quot;: 0}}, {&quot;$sort&quot;: {&quot;uptime_days&quot;: -1}}]\">Análise de Uptime</a>\n",
+        "mode": "html"
+      },
+      "pluginVersion": "12.1.1",
+      "type": "text",
+      "title": "MongoDB Infrastructure Queries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "id": 4,
+      "panels": [],
+      "title": "Data",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "aex2wiaxw9q0wf"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 26,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 2,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "columns": [],
+          "filters": [],
+          "format": "table",
+          "global_query_id": "",
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "",
+          "source": "url",
+          "type": "json",
+          "url": "http://localhost:8000/query",
+          "url_options": {
+            "body_content_type": "application/json",
+            "body_type": "raw",
+            "data": "{\"pipeline\": $mongodb_filter}",
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST"
+          }
+        }
+      ],
+      "title": "🔍 Consulta Customizada: $mongodb_filter",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "delimiter": ",",
+            "format": "json",
+            "replace": true,
+            "source": "data"
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "pattern": "^(?!_).*"
+            }
+          }
+        },
+        {
+          "id": "limit",
+          "options": {
+            "limitField": "$limit"
+          }
+        }
+      ],
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "schemaVersion": 41,
+  "tags": [
+    "ansible",
+    "mongodb"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "10",
+          "value": "10"
+        },
+        "description": "",
+        "label": "Limit",
+        "name": "limit",
+        "options": [
+          {
+            "selected": true,
+            "text": "10",
+            "value": "10"
+          },
+          {
+            "selected": false,
+            "text": "20",
+            "value": "20"
+          },
+          {
+            "selected": false,
+            "text": "50",
+            "value": "50"
+          },
+          {
+            "selected": false,
+            "text": "100",
+            "value": "100"
+          }
+        ],
+        "query": "10,20,50,100",
+        "type": "custom"
+      },
+      {
+        "label": "MongoDB Filter",
+        "name": "mongodb_filter",
+        "options": [
+          {
+            "selected": true,
+            "text": "[]",
+            "value": "[]"
+          }
+        ],
+        "type": "textbox",
+        "current": {
+          "text": "[]",
+          "value": "[]"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true
+  },
+  "timezone": "browser",
+  "title": "Ansible Discovery - Explorer",
+  "uid": "ansible-discovery-dashboard-explorer",
+  "version": 8,
+  "weekStart": "sunday",
+  "refresh": "1m"
+}

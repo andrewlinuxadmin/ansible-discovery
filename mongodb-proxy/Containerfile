@@ -1,0 +1,57 @@
+# MongoDB Proxy Container
+FROM registry.access.redhat.com/ubi9/ubi:9.3
+
+# Metadata
+LABEL name="ansible-discovery-mongodb-proxy" \
+      version="v1b" \
+      description="MongoDB proxy providing Grafana data source interface for Ansible Discovery" \
+      maintainer="Ansible Discovery Team" \
+      summary="MongoDB proxy service for Grafana data source integration" \
+      io.k8s.description="MongoDB proxy providing Grafana data source interface for Ansible Discovery" \
+      io.k8s.display-name="Ansible Discovery MongoDB Proxy" \
+      io.openshift.tags="ansible,grafana,mongodb,discovery,proxy"
+
+# Install required packages
+RUN dnf update -y && \
+    dnf install -y --allowerasing python3 python3-pip curl && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+# Create application user
+RUN groupadd -r proxyuser && \
+    useradd -r -g proxyuser -d /app -s /sbin/nologin -c "MongoDB Proxy User" proxyuser
+
+# Create application directory
+WORKDIR /app
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Copy application files
+COPY mongodb-proxy.py .
+COPY init-mongo.js .
+
+# Set ownership
+RUN chown -R proxyuser:proxyuser /app
+
+# Switch to non-root user
+USER proxyuser
+
+# Expose port
+EXPOSE 8000
+
+# Environment variables
+ENV MONGODB_URI=mongodb://localhost:27017
+ENV ANSIBLE_DB=ansible
+ENV CACHE_COLLECTION=cache
+ENV WORKERS=4
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:8000/healthz || exit 1
+
+# Start the MongoDB proxy application
+CMD ["python3", "mongodb-proxy.py"]

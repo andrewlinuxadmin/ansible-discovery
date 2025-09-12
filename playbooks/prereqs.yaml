@@ -1,0 +1,34 @@
+# Ansible Discovery Prerequisites Tasks
+# This file contains tasks to be included in the main discovery playbook
+# It is not a standalone playbook
+
+- name: Configure selective collection variables
+  ansible.builtin.set_fact:
+    cacheable: true
+    _collector_packages: "{{ (collector_only == 'packages') if collector_only is defined else (collector_packages | default(true) | bool) }}"
+    _collector_services: "{{ (collector_only == 'services') if collector_only is defined else (collector_services | default(true) | bool) }}"
+    _collector_ports: "{{ (collector_only == 'ports') if collector_only is defined else (collector_ports | default(true) | bool) }}"
+    _collector_bootloader: "{{ (collector_only == 'bootloader') if collector_only is defined else (collector_bootloader | default(true) | bool) }}"
+    _collector_firewall: "{{ (collector_only == 'firewall') if collector_only is defined else (collector_firewall | default(true) | bool) }}"
+    _collector_selinux: "{{ (collector_only == 'selinux') if collector_only is defined else (collector_selinux | default(true) | bool) }}"
+    _collector_blockdev: "{{ (collector_only == 'blockdev') if collector_only is defined else (collector_blockdev | default(true) | bool) }}"
+    _collector_java: "{{ (collector_only == 'java') if collector_only is defined else (collector_java | default(true) | bool) }}"
+    _collector_apache: "{{ (collector_only == 'apache') if collector_only is defined else (collector_apache | default(true) | bool) }}"
+    _collector_nginx: "{{ (collector_only == 'nginx') if collector_only is defined else (collector_nginx | default(true) | bool) }}"
+
+- name: Debug collection mode
+  ansible.builtin.debug:
+    msg: |
+      Collection mode: {{ 'selective (' + collector_only + ')' if collector_only is defined else 'all collectors' }}
+      Active collectors:
+      - packages: {{ _collector_packages }}
+      - services: {{ _collector_services }}
+      - ports: {{ _collector_ports }}
+      - bootloader: {{ _collector_bootloader }}
+      - firewall: {{ _collector_firewall }}
+      - selinux: {{ _collector_selinux }}
+      - blockdev: {{ _collector_blockdev }}
+      - java: {{ _collector_java }}
+      - apache: {{ _collector_apache }}
+      - nginx: {{ _collector_nginx }}
+  when: debug | default(false)

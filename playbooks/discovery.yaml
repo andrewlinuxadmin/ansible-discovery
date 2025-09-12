@@ -1,0 +1,111 @@
+---
+- name: Initialize discovery
+  hosts: all
+  gather_facts: true
+  become: true
+  vars:
+    debug: false
+    log: false
+  tasks:
+    - name: Configure discovery prerequisites
+      ansible.builtin.include_tasks:
+        file: prereqs.yaml
+
+    - name: Collect processes
+      block:
+        - name: Collect process facts using custom module
+          process_facts:
+            exclude_kernel_threads: true
+            detect_containers: true
+          register: process_result
+
+        - name: Set processes fact as cacheable from ansible_facts
+          ansible.builtin.set_fact:
+            cacheable: true
+            processes: "{{ process_result.ansible_facts.processes }}"
+
+        - name: Debug processes
+          ansible.builtin.debug:
+            var: processes
+          when: debug
+
+    - name: Collect RHEL specific facts
+      ansible.posix.rhel_facts:
+
+    - name: Collect package facts
+      ansible.builtin.include_tasks:
+        file: collectors/packages.yaml
+      when: _collector_packages | bool
+
+    - name: Collect service facts
+      ansible.builtin.include_tasks:
+        file: collectors/services.yaml
+      when: _collector_services | bool
+
+    - name: Collect open-ports facts
+      ansible.builtin.include_tasks:
+        file: collectors/ports.yaml
+      when: _collector_ports | bool
+
+    - name: Collect bootloader facts
+      ansible.builtin.include_tasks:
+        file: collectors/bootloader.yaml
+      when: _collector_bootloader | bool
+
+    - name: Collect firewall facts
+      ansible.builtin.include_tasks:
+        file: collectors/firewall.yaml
+      when: _collector_firewall | bool
+
+    - name: Collect selinux facts
+      ansible.builtin.include_tasks:
+        file: collectors/selinux.yaml
+      when: _collector_selinux | bool
+
+    - name: Collect blockdev facts
+      ansible.builtin.include_tasks:
+        file: collectors/blockdev.yaml
+      when: _collector_blockdev | bool
+
+# ------------------------- JAVA -------------------------
+
+    - name: Collect java
+      when: _collector_java | bool
+      block:
+        - name: Check for Java processes
+          ansible.builtin.set_fact:
+            cacheable: true
+            has_java_processes: "{{ processes | selectattr('command', 'in', ['java']) | list | length > 0 }}"
+
+        - name: Collects information from Java processes
+          ansible.builtin.include_tasks:
+            file: collectors/java/java.yaml
+          when: has_java_processes | default(false)
+
+# ------------------------ APACHE ------------------------
+
+    - name: Collect Apache
+      when: _collector_apache | bool
+      block:
+        - name: Check for Apache processes
+          ansible.builtin.set_fact:
+            has_apache_processes: "{{ processes | selectattr('command', 'in', ['httpd', 'apache2']) | list | length > 0 }}"
+
+        - name: Collects information from Apache processes
+          ansible.builtin.include_tasks:
+            file: collectors/apache.yaml
+          when: has_apache_processes | default(false)
+
+# ------------------------ NGINX -------------------------
+
+    - name: Collect Nginx
+      when: _collector_nginx | bool
+      block:
+        - name: Check for Nginx processes
+          ansible.builtin.set_fact:
+            has_nginx_processes: "{{ processes | selectattr('command', 'match', '^nginx:') | list | length > 0 }}"
+
+        - name: Collects information from Nginx processes
+          ansible.builtin.include_tasks:
+            file: collectors/nginx.yaml
+          when: has_nginx_processes | default(false)

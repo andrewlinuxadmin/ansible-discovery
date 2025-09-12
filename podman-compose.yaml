@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # MongoDB Database Service
+  mongodb:
+    image: quay.io/redhat_emp1/ansible-discovery-mongodb:v1b
+    container_name: ansible-discovery-mongodb
+    hostname: mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - "mongodb-data:/var/lib/mongodb:Z"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=""
+      - MONGO_INITDB_ROOT_PASSWORD=""
+      - MONGO_INITDB_DATABASE=""
+    networks:
+      - ansible-discovery-net
+    healthcheck:
+      test: ["CMD", "sh", "-c", "mongosh --eval 'db.adminCommand({ping: 1})'"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    labels:
+      - "io.podman.compose.project=ansible-discovery"
+      - "description=MongoDB 8.0 for Ansible Discovery data storage"
+
+  # Grafana Visualization Service
+  grafana:
+    image: quay.io/redhat_emp1/ansible-discovery-grafana:v1b
+    container_name: ansible-discovery-grafana
+    hostname: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - "grafana-data:/usr/share/grafana/data:Z"
+      - "grafana-logs:/var/log/grafana:Z"
+    environment:
+      - GF_PATHS_CONFIG=/etc/grafana/grafana.ini
+      - GF_PATHS_DATA=/usr/share/grafana/data
+      - GF_PATHS_HOME=/usr/share/grafana
+      - GF_PATHS_LOGS=/var/log/grafana
+      - GF_PATHS_PLUGINS=/usr/share/grafana/data/plugins
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_SECURITY_ADMIN_PASSWORD=redhat
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_INSTALL_PLUGINS=yesoreyeram-infinity-datasource
+      - MONGODB_PROXY_URL=http://mongodb-proxy:8000
+    depends_on:
+      - mongodb
+    networks:
+      - ansible-discovery-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    labels:
+      - "io.podman.compose.project=ansible-discovery"
+      - "description=Grafana with Ansible Discovery plugins"
+
+  # MongoDB Proxy Service (if available)
+  mongodb-proxy:
+    image: quay.io/redhat_emp1/ansible-discovery-mongodb-proxy:v1b
+    container_name: ansible-discovery-mongodb-proxy
+    hostname: mongodb-proxy
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - WORKERS=4
+    depends_on:
+      - mongodb
+    networks:
+      - ansible-discovery-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    labels:
+      - "io.podman.compose.project=ansible-discovery"
+      - "description=MongoDB proxy for Ansible Discovery"
+
+networks:
+  ansible-discovery-net:
+    driver: bridge
+    labels:
+      - "io.podman.compose.project=ansible-discovery"
+      - "description=Network for Ansible Discovery services"
+
+# Volumes declaration (using host paths)
+volumes:
+  mongodb-data:
+    driver: local
+
+  grafana-data:
+    driver: local
+
+  grafana-logs:
+    driver: local
