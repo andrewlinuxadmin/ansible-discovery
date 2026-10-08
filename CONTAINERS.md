@@ -1,5 +1,12 @@
 # Ansible Discovery - Container Environment
 
+> **Note**: The container stack is **optional**. It is only needed for the
+> **Full Stack mode**, which provides centralized fact storage in MongoDB
+> and visual exploration via Grafana dashboards.
+> In **Standalone mode** (default), the playbooks cache facts as local
+> JSON files and no external services are required.
+> See the [README.md](README.md) for Standalone mode setup.
+
 Este documento descreve como gerenciar o ambiente de containers do Ansible Discovery usando Podman Compose.
 
 ## 🏗️ Arquitetura dos Containers
@@ -15,7 +22,7 @@ Este documento descreve como gerenciar o ambiente de containers do Ansible Disco
 │ • Infinity Plugin   │    │                     │    │                     │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
          │                           │                           │
-         └─────────────────────────────────────────────────────────┘
+         └───────────────────────────────────────────────────────┘
                               ansible-discovery-net
 ```
 

@@ -4,7 +4,7 @@
 
 ### System Requirements
 
-- **Control Node**: Ansible 2.9+, Python 3.9+, MongoDB
+- **Control Node**: Ansible 2.9+, Python 3.9+
 - **Target Hosts**: Linux (RHEL/CentOS, Ubuntu/Debian, SUSE)
 - **Network**: SSH connectivity to target hosts
 - **Permissions**: Sudo access on targets for complete discovery
@@ -25,19 +25,12 @@ source activate  # Activates virtual environment
 pip install -r pip-venv-requirements.txt
 ```
 
-### MongoDB Setup
+## Deployment Modes
 
-```bash
-# Local MongoDB (recommended for development)
-systemctl start mongod
+### Standalone Mode (default)
 
-# Docker alternative
-docker run -d -p 27017:27017 --name ansible-mongo mongo:latest
-```
-
-## Quick Start
-
-### Basic Deployment
+No external services required. Facts are cached as local JSON files.
+This is the simplest way to get started.
 
 ```bash
 # Navigate to playbooks directory
@@ -50,6 +43,81 @@ cp inventory.example inventory
 # Full discovery (all collectors)
 ansible-playbook discovery.yaml
 
+# Facts are cached in playbooks/facts_cache/
+ls facts_cache/
+cat facts_cache/server1.example.com | python3 -m json.tool
+```
+
+#### Cache Management (Standalone)
+
+```bash
+# View cached hosts
+ls playbooks/facts_cache/
+
+# View facts for a specific host
+cat facts_cache/server1.example.com | python3 -m json.tool
+
+# Clear cache for a specific host
+rm facts_cache/server1.example.com
+
+# Clear all cache
+rm -rf facts_cache/*
+```
+
+### Full Stack Mode (MongoDB + Grafana)
+
+For centralized storage and visual exploration via Grafana dashboards.
+Requires MongoDB, MongoDB Proxy, and Grafana (see [CONTAINERS.md](CONTAINERS.md)).
+
+#### MongoDB Setup
+
+```bash
+# Option 1: Use provided Podman Compose stack (recommended)
+podman-compose up -d
+
+# Option 2: Local MongoDB
+systemctl start mongod
+
+# Option 3: Docker alternative
+docker run -d -p 27017:27017 --name ansible-mongo mongo:latest
+```
+
+#### Switch to MongoDB Caching
+
+```bash
+cd playbooks/
+cp ansible.cfg.mongodb ansible.cfg
+```
+
+#### Quick Start (Full Stack)
+
+```bash
+cd playbooks/
+
+# Full discovery
+ansible-playbook discovery.yaml
+
+# Access Grafana at http://localhost:3000 (admin / redhat)
+```
+
+#### Cache Management (MongoDB)
+
+```bash
+# Clear all cache
+mongosh ansible --eval "db.cache.drop()"
+
+# Clear specific host
+mongosh ansible --eval "db.cache.deleteOne({_id:'ansible_factshostname.domain.com'})"
+
+# Check cache size
+mongosh ansible --eval "db.stats()"
+```
+
+## Usage
+
+```bash
+cd playbooks/
+
 # Single collector (selective)
 ansible-playbook discovery.yaml -e collector_only=java
 
@@ -60,7 +128,11 @@ ansible-playbook discovery.yaml -e debug=true -e log=true
 ### Verification
 
 ```bash
-# Check MongoDB cache
+# Check cached facts (standalone mode)
+ls facts_cache/
+cat facts_cache/server1.example.com | python3 -m json.tool
+
+# Check MongoDB cache (full stack mode)
 mongosh ansible
 > db.cache.find({}, {_id: 1}).toArray()
 > exit
@@ -92,14 +164,14 @@ app-container ansible_connection=docker
 ### Ansible Configuration
 
 ```ini
-# ansible.cfg
+# ansible.cfg (standalone mode — default)
 [defaults]
 inventory = inventory
 host_key_checking = False
 gathering = smart
-fact_caching = community.mongodb.mongodb
+fact_caching = ansible.builtin.jsonfile
 fact_caching_timeout = 0
-fact_caching_connection = mongodb://localhost:27017/ansible
+fact_caching_connection = ./facts_cache
 filter_plugins = ./filter_plugins
 
 [inventory]
@@ -109,6 +181,15 @@ enable_plugins = host_list, script, auto, yaml, ini
 become = True
 become_method = sudo
 become_user = root
+```
+
+To switch to MongoDB caching, use `ansible.cfg.mongodb`:
+
+```ini
+# ansible.cfg.mongodb (full stack mode)
+fact_caching = community.mongodb.mongodb
+fact_caching_timeout = 0
+fact_caching_connection = mongodb://localhost:27017/ansible
 ```
 
 ### Variable Configuration
@@ -141,7 +222,7 @@ log: false
 
 - **SSH Keys**: Use key-based authentication instead of passwords
 - **Sudo Access**: Configure passwordless sudo for automation accounts
-- **Network**: Restrict MongoDB access to control nodes only
+- **Network**: Restrict MongoDB access to control nodes only (full stack mode)
 - **Data**: Consider TTL settings for sensitive cached data
 
 ### Performance Tuning
@@ -173,13 +254,14 @@ ansible-playbook discovery.yaml -e collector_only=apache -l web_servers
 ### Cache Management
 
 ```bash
-# Clear all cache
-./scripts/clear-cache.sh
+# Standalone mode: manage JSON files directly
+ls facts_cache/                          # List cached hosts
+cat facts_cache/<hostname>               # View host facts
+rm facts_cache/<hostname>                # Clear specific host
+rm -rf facts_cache/*                     # Clear all cache
 
-# Clear specific host
+# Full stack mode: use MongoDB commands
 mongosh ansible --eval "db.cache.deleteOne({_id:'ansible_factshostname.domain.com'})"
-
-# Check cache size
 mongosh ansible --eval "db.stats()"
 ```
 
@@ -188,7 +270,7 @@ mongosh ansible --eval "db.stats()"
 #### Common Issues
 
 1. **Module not found**: Ensure you're in `playbooks/` directory
-2. **MongoDB connection**: Verify MongoDB is running on localhost:27017
+2. **MongoDB connection** (full stack only): Verify MongoDB is running on localhost:27017
 3. **SSH failures**: Check inventory and SSH key configuration
 4. **Permission denied**: Ensure sudo access is configured
 

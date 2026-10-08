@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory contains comprehensive documentation for the Ansible Discovery System, a modular infrastructure discovery platform with custom modules, selective collection, and MongoDB caching.
+This directory contains comprehensive documentation for the Ansible Discovery System, a modular infrastructure discovery platform with custom modules, selective collection, and flexible fact caching (JSON files or MongoDB).
 
 ## Documentation Structure
 
@@ -13,6 +13,7 @@ This directory contains comprehensive documentation for the Ansible Discovery Sy
 | **[README.md](README.md)**                | Project overview and quick start  | All users             |
 | **[ARCHITECTURE.md](ARCHITECTURE.md)**    | Technical architecture and design | Developers/Architects |
 | **[DEPLOYMENT.md](DEPLOYMENT.md)**        | Production deployment guide       | Operations/DevOps     |
+| **[CONTAINERS.md](CONTAINERS.md)**        | Full Stack container environment  | Operations/DevOps     |
 
 ### Custom Components Documentation
 
@@ -37,9 +38,9 @@ This directory contains comprehensive documentation for the Ansible Discovery Sy
 
 ### For New Users
 
-1. **Start Here**: [README.md](README.md) - Project overview and features
-2. **Setup**: [DEPLOYMENT.md](DEPLOYMENT.md) - Installation and configuration
-3. **Usage**: Run `ansible-playbook discovery.yaml` for full discovery
+1. **Start Here**: [README.md](README.md) - Project overview, deployment modes, and quick start
+2. **Standalone Setup**: Clone, install collections, run `ansible-playbook discovery.yaml`
+3. **Full Stack Setup**: [CONTAINERS.md](CONTAINERS.md) - MongoDB + Grafana via Podman Compose
 4. **Selective**: Use `ansible-playbook discovery.yaml -e collector_only=java`
 
 ### For Developers
@@ -88,10 +89,10 @@ Four production-ready custom modules replace shell scripts:
 
 ### Caching Strategy
 
-- **Storage**: MongoDB with configurable TTL
+- **Standalone mode (default)**: JSON files in `playbooks/facts_cache/` — no external services
+- **Full Stack mode**: MongoDB with configurable TTL + Grafana visualization
 - **Performance**: Subsequent runs skip discovery if cached
-- **Management**: Scripts in `/scripts/` for cache operations
-- **Connection**: `mongodb://localhost:27017/ansible`
+- **Switching**: Copy `ansible.cfg.mongodb` over `ansible.cfg` for Full Stack mode
 
 ## Development Workflows
 
@@ -122,7 +123,7 @@ Four production-ready custom modules replace shell scripts:
 ### Production Ready ✅
 
 - **Core Architecture**: Selective collection with absolute precedence
-- **MongoDB Caching**: TTL-based with performance optimization
+- **Fact Caching**: JSON files (standalone) or MongoDB (full stack)
 - **Process Discovery**: Custom `process_facts` module
 - **Apache Discovery**: Complete configuration parsing
 - **PHP Discovery**: Multi-distribution support
@@ -175,7 +176,7 @@ markdownlint *.md --fix
 1. **Module Documentation**: Check `playbooks/library/docs/` for detailed module info
 2. **Test Examples**: Review test files for usage patterns
 3. **Debug Mode**: Use `-e debug=true -e log=true` for detailed output
-4. **Cache Inspection**: Use MongoDB shell or `scripts/manage-cache.sh`
+4. **Cache Inspection**: Check `facts_cache/` files or use MongoDB shell
 
 ## Contributing
 
@@ -221,27 +222,27 @@ markdownlint *.md --fix
 ### Common Issues
 - **Permission Problems**: See graceful degradation patterns in ARCHITECTURE.md
 - **Container Detection**: Multi-method detection examples in collectors/README.md
-- **Cache Issues**: MongoDB operations guide in DEPLOYMENT.md
+- **Cache Issues**: See DEPLOYMENT.md for cache management in both modes
 - **Java Discovery**: Detailed troubleshooting in java/README.md
 
 ### Debugging Resources
 - **Debug Mode**: Use `-e debug=true -e log=true`
 - **Single Collector**: Use `-e collector_only=COLLECTOR`
 - **Verbose Output**: Add `-vvv` to ansible-playbook commands
-- **Cache Inspection**: MongoDB queries in DEPLOYMENT.md
+- **Cache Inspection**: MongoDB queries in DEPLOYMENT.md or local JSON files
 
 ### Getting Help
 1. Check relevant documentation section first
 2. Review troubleshooting guides in component docs
 3. Use debug mode for detailed execution information
-4. Inspect MongoDB cache for stored facts
+4. Inspect fact cache files or MongoDB for stored facts
 
 ## Technical Specifications
 
 ### System Requirements
 - Ansible 2.14+
 - Python 3.9+
-- MongoDB 4.4+ (for caching)
+- MongoDB 4.4+ (optional, for Full Stack mode only)
 - Required collections: see galaxy-requirements.yaml
 
 ### Supported Platforms

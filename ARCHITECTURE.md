@@ -22,7 +22,7 @@ discovery.yaml (orchestrator)
 2. **Process Collection**: Gather running processes using custom `process_facts` module
 3. **System Discovery**: Execute enabled collectors conditionally based on `_collector_*` variables
 4. **Application Discovery**: Java/Apache/PHP based on detected processes and custom modules
-5. **Data Consolidation**: Store all facts in MongoDB with configurable TTL
+5. **Data Consolidation**: Store all facts with configurable caching (JSON files or MongoDB)
 
 ## Selective Collection System
 
@@ -64,7 +64,7 @@ ansible-playbook discovery.yaml -e collector_packages=false -e collector_service
 1. **Standalone**: Minimal external dependencies
 2. **Cross-platform**: Python 2.7+ and 3.x compatibility
 3. **Comprehensive**: Full parsing with error handling
-4. **Cacheable**: Results stored in MongoDB for performance
+4. **Cacheable**: Results stored via Ansible fact caching for performance
 
 ### Module Specifications
 
@@ -136,18 +136,59 @@ ansible-playbook discovery.yaml
 
 ### Caching Strategy
 
-- **Storage**: MongoDB with configurable TTL
-- **Connection**: `mongodb://localhost:27017/ansible`
-- **Collection**: `cache` with document structure `{_id: "ansible_facts<hostname>", data: {...}}`
-- **TTL**: Configurable (default: 0 = infinite)
+The system supports two caching backends. Both use `cacheable: true` on
+all important facts and a configurable TTL (default: 0 = infinite).
+
+#### Standalone Mode (default) — JSON files
+
+No external services required. Facts are stored as one JSON file per host:
+
+```ini
+# ansible.cfg (default)
+fact_caching = ansible.builtin.jsonfile
+fact_caching_timeout = 0
+fact_caching_connection = ./facts_cache
+```
+
+- **Storage**: `playbooks/facts_cache/<hostname>` (one file per host)
 - **Performance**: Subsequent runs skip discovery if cached data exists
+- **Management**: Delete files to clear cache (`rm facts_cache/<hostname>`)
+
+#### Full Stack Mode — MongoDB
+
+For centralized storage and Grafana visualization:
+
+```ini
+# ansible.cfg.mongodb
+fact_caching = community.mongodb.mongodb
+fact_caching_timeout = 0
+fact_caching_connection = mongodb://localhost:27017/ansible
+```
+
+- **Storage**: MongoDB `ansible.cache` collection
+- **Document structure**: `{_id: "ansible_facts<hostname>", data: {...}}`
+- **Performance**: Subsequent runs skip discovery if cached data exists
+- **Visualization**: Grafana accesses facts via MongoDB Proxy REST API
+
+### Cache Inspection
+
+```bash
+# Standalone mode — read JSON files directly
+cat playbooks/facts_cache/server1.example.com | python3 -m json.tool
+
+# Full Stack mode — query MongoDB
+mongosh ansible
+db.cache.find({}, {_id: 1}).toArray()
+db.cache.findOne({_id: "ansible_facts<hostname>"}).data
+db.cache.drop()  # Clear all cache
+```
 
 ## Performance Architecture
 
 ### Optimization Strategies
 
 1. **Selective Collection**: Use `collector_only` to run specific collectors
-2. **MongoDB Caching**: Avoid re-discovery with persistent caching
+2. **Fact Caching**: Avoid re-discovery with persistent caching (JSON files or MongoDB)
 3. **Custom Modules**: Replace shell scripts with efficient Python modules
 4. **Conditional Execution**: Skip collectors when processes not detected
 5. **Custom Filters**: Use `file_exists` filter vs. multiple `stat` calls
@@ -161,7 +202,7 @@ ansible-playbook discovery.yaml
 | PHP Config Parser     | ✅ Production   | Multi-distribution support              |
 | NGINX Config Parser   | ✅ Production   | Complete with PHP-FPM detection        |
 | Selective Collection  | ✅ Production   | Absolute precedence implemented         |
-| MongoDB Caching       | ✅ Production   | TTL-based with performance optimization |
+| Fact Caching          | ✅ Production   | JSON files (default) or MongoDB         |
 | Custom Filters        | ✅ Production   | File operation filters                  |
 
 ## Technical Specifications
@@ -172,7 +213,7 @@ ansible-playbook discovery.yaml
 
 - `ansible.posix`
 - `community.general`
-- `community.mongodb`
+- `community.mongodb` (only for Full Stack mode with MongoDB caching)
 - `fedora.linux_system_roles`
 
 #### Python Dependencies
@@ -185,7 +226,7 @@ ansible-playbook discovery.yaml
 
 - **Target Systems**: Linux (RHEL, Debian, SUSE families)
 - **Control Node**: Ansible 2.9+, Python 3.9+
-- **Database**: MongoDB (local or remote)
+- **Database**: MongoDB (optional, for Full Stack mode only)
 - **Network**: SSH connectivity to target hosts
 - **Permissions**: Sudo access for system discovery
 
@@ -279,12 +320,21 @@ Final `java_processes` structure includes:
 - Configuration file analysis
 - Deployment information
 
-## MongoDB Caching Strategy
+## Fact Caching Configuration
 
-### Configuration
+### Standalone Mode (default)
 
 ```ini
 # ansible.cfg
+fact_caching = ansible.builtin.jsonfile
+fact_caching_timeout = 0  # Infinite cache
+fact_caching_connection = ./facts_cache
+```
+
+### Full Stack Mode (MongoDB)
+
+```ini
+# ansible.cfg.mongodb
 fact_caching = community.mongodb.mongodb
 fact_caching_timeout = 0  # Infinite cache
 fact_caching_connection = mongodb://localhost:27017/ansible
@@ -412,7 +462,7 @@ if [ -f /.dockerenv ] || grep -q "docker\|lxc\|podman" /proc/1/cgroup 2>/dev/nul
 2. **Dry run testing**: `--check --diff`
 3. **Selective testing**: `-e collector_only=MODULE`
 4. **Debug validation**: `-e debug=true`
-5. **Cache verification**: MongoDB inspection
+5. **Cache verification**: Inspect cache files or MongoDB
 
 ### Documentation Standards
 

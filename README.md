@@ -2,7 +2,21 @@
 
 **Automated infrastructure discovery system for Linux servers using Ansible**
 
-A comprehensive solution that collects detailed information about processes, Java applications, web servers, PHP applications, and system services, storing data in MongoDB with intelligent caching for analysis and reporting.
+A comprehensive solution that collects detailed information about processes, Java applications, web servers, PHP applications, and system services, with intelligent fact caching for analysis and reporting.
+
+## 📦 Deployment Modes
+
+The project supports two deployment modes:
+
+| Mode | Caching | Visualization | Requirements |
+|------|---------|---------------|--------------|
+| **Standalone** | JSON files (local) | Manual (JSON files) | Ansible only |
+| **Full Stack** | MongoDB | Grafana dashboards | Ansible + Podman Compose |
+
+**Standalone mode** is the default and requires no external services.
+**Full Stack mode** adds MongoDB for centralized storage, a REST proxy,
+and Grafana for visual exploration and filtering of discovered facts.
+See [CONTAINERS.md](CONTAINERS.md) for the full stack setup.
 
 ## ✨ Features
 
@@ -20,7 +34,7 @@ A comprehensive solution that collects detailed information about processes, Jav
 - **Custom Modules**: Four specialized modules for process and configuration discovery
 - **Container Detection**: Automatic adjustment for containerized environments
 - **Custom Filters**: File existence checks and path validation
-- **MongoDB Caching**: Persistent storage with configurable TTL
+- **Flexible Caching**: JSON file (standalone) or MongoDB (full stack) with configurable TTL
 - **Cross-Platform**: RHEL, Debian, SUSE support with unified output
 
 ### 🛠 **Modular Architecture**
@@ -35,7 +49,6 @@ A comprehensive solution that collects detailed information about processes, Jav
 ### Prerequisites
 
 - **System**: Linux with Python 3.9+
-- **Database**: MongoDB instance (local or remote)
 - **Network**: SSH connectivity to target servers
 - **Permissions**: Sudo access on target machines
 
@@ -60,20 +73,43 @@ A comprehensive solution that collects detailed information about processes, Jav
    # Install collections
    ansible-galaxy collection install -r galaxy-requirements.yaml
    
-   # Setup configuration
-   cp ansible.cfg.example ansible.cfg
+   # Setup inventory
    cp inventory.example inventory
-   ```
-
-3. **Start MongoDB and configure inventory**
-
-   ```bash
-   # Docker (recommended)
-   docker run -d -p 27017:27017 --name ansible-discovery-mongo mongo:latest
-   
    # Edit inventory with your target servers
    nano inventory
    ```
+
+3. **Run discovery** (no extra services needed)
+
+   ```bash
+   ansible-playbook discovery.yaml
+   ```
+
+   Facts are cached as JSON files in `playbooks/facts_cache/` by default.
+   The directory is created automatically on the first run.
+
+### Switching to Full Stack Mode (optional)
+
+For centralized storage and visual exploration via Grafana, switch to
+MongoDB-backed caching:
+
+1. **Start the container stack**
+
+   ```bash
+   # From project root
+   podman-compose up -d
+   ```
+
+2. **Switch caching to MongoDB**
+
+   ```bash
+   cd playbooks
+   cp ansible.cfg.mongodb ansible.cfg
+   ```
+
+3. **Access Grafana** at <http://localhost:3000> (admin / redhat)
+
+See [CONTAINERS.md](CONTAINERS.md) for full stack details.
 
 ## 🎯 Usage
 
@@ -127,7 +163,7 @@ The discovery system uses a **selective collection approach** with absolute prec
 discovery.yaml → prereqs.yaml (selective config) → process_facts (custom module) →
                  → collectors/*.yaml (conditional execution) →
                  → custom modules (config parsing) →
-                 → MongoDB cache (TTL-based)
+                 → fact cache (JSON files or MongoDB)
 ```
 
 ### Custom Modules
@@ -181,13 +217,50 @@ Enhanced file operations with custom filters:
 
 **Configuration**: Add `filter_plugins = ./filter_plugins` to your `ansible.cfg`.
 
-### MongoDB Caching
+### Fact Caching
 
-All discovered facts are cached in MongoDB with configurable TTL:
+All discovered facts are cached with configurable TTL to avoid
+re-discovery on subsequent runs:
 
-- **Performance**: Avoid re-discovery on subsequent runs
-- **Persistence**: Data survives across playbook executions
-- **Flexibility**: TTL=0 for infinite cache (current default)
+#### Standalone Mode (default)
+
+Facts are stored as JSON files in `playbooks/facts_cache/`:
+
+```ini
+# ansible.cfg (default)
+fact_caching = ansible.builtin.jsonfile
+fact_caching_timeout = 0
+fact_caching_connection = ./facts_cache
+```
+
+```bash
+# View cached facts for a host
+cat facts_cache/server1.example.com
+
+# Clear cache for a specific host
+rm facts_cache/server1.example.com
+
+# Clear all cache
+rm -rf facts_cache/*
+```
+
+#### Full Stack Mode (MongoDB)
+
+Facts are stored in MongoDB for centralized access and Grafana visualization:
+
+```ini
+# ansible.cfg.mongodb
+fact_caching = community.mongodb.mongodb
+fact_caching_timeout = 0
+fact_caching_connection = mongodb://localhost:27017/ansible
+```
+
+```bash
+# Inspect cache via MongoDB shell
+mongosh ansible
+db.cache.find({}, {_id: 1}).toArray()
+db.cache.findOne({_id: "ansible_facts<hostname>"}).data
+```
 
 ### Cross-Platform Support
 
