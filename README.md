@@ -12,6 +12,23 @@ on these servers.
 The playbook is **read-only** — it does not alter, install, or remove
 anything on the target servers.
 
+### Collected Data
+
+The collection is restricted to technical configuration and OS inventory
+data. **No business data, file contents, stored credentials, or end-user
+information is collected.** The data obtained is exclusively:
+
+- **Operating system**: distribution, kernel version, hostname
+- **Installed packages**: RPM package list with versions (e.g. httpd-2.4.6, openssl-1.0.2k)
+- **Active services**: service name and state (e.g. sshd running, crond running)
+- **Network ports**: listening TCP/UDP ports and associated process
+- **Java applications**: running Java processes, server type (Tomcat, JBoss), version, and deployed apps
+- **Web servers**: Apache and NGINX configuration (VirtualHosts, enabled modules)
+- **PHP**: installed versions, loaded modules and extensions
+- **Firewall and SELinux**: active rules and operation mode
+- **Disks and partitions**: block devices, mount points, and filesystems
+- **Bootloader**: GRUB configuration and kernel boot parameters
+
 ## Prerequisites
 
 A **RHEL 9** server as the control node. Install the required packages:
