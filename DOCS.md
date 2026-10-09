@@ -2,7 +2,9 @@
 
 ## Overview
 
-This directory contains comprehensive documentation for the Ansible Discovery System, a modular infrastructure discovery platform with custom modules, selective collection, and flexible fact caching (JSON files or MongoDB).
+Comprehensive documentation for the Ansible Discovery System — a modular
+infrastructure discovery platform with custom modules, selective collection,
+and JSON file-based fact caching.
 
 ## Documentation Structure
 
@@ -12,260 +14,200 @@ This directory contains comprehensive documentation for the Ansible Discovery Sy
 |-------------------------------------------|-----------------------------------|-----------------------|
 | **[README.md](README.md)**                | Project overview and quick start  | All users             |
 | **[ARCHITECTURE.md](ARCHITECTURE.md)**    | Technical architecture and design | Developers/Architects |
-| **[DEPLOYMENT.md](DEPLOYMENT.md)**        | Production deployment guide       | Operations/DevOps     |
-| **[CONTAINERS.md](CONTAINERS.md)**        | Full Stack container environment  | Operations/DevOps     |
+| **[DEPLOYMENT.md](DEPLOYMENT.md)**        | Deployment and operations guide   | Operations/DevOps     |
 
 ### Custom Components Documentation
 
-| Component           | Location                                                                      | Description                   |
-|---------------------|-------------------------------------------------------------------------------|-------------------------------|
-| **Custom Modules**  | [playbooks/library/docs/](playbooks/library/docs/)                           | Complete module documentation |
-| **Custom Filters**  | [playbooks/filter_plugins/README.md](playbooks/filter_plugins/README.md)     | File operation filters        |
-| **Module Tests**    | [playbooks/library/tests/](playbooks/library/tests/)                         | Module testing framework      |
-| **Filter Tests**    | [playbooks/filter_plugins/tests/](playbooks/filter_plugins/tests/)           | Filter testing framework      |
+| Component           | Location                                                                  | Description                   |
+|---------------------|---------------------------------------------------------------------------|-------------------------------|
+| **Custom Modules**  | [playbooks/library/docs/](playbooks/library/docs/)                       | Complete module documentation |
+| **Custom Filters**  | [playbooks/filter_plugins/README.md](playbooks/filter_plugins/README.md) | File operation filters        |
+| **Module Tests**    | [playbooks/library/tests/](playbooks/library/tests/)                     | Module testing framework      |
+| **Filter Tests**    | [playbooks/filter_plugins/tests/](playbooks/filter_plugins/tests/)       | Filter testing framework      |
 
-### Collector Documentation
+### Collector Status
 
-| Collector            | Status          | Description                                       |
-|----------------------|-----------------|---------------------------------------------------|
-| **Java Discovery**   | ✅ Production   | Tomcat, JBoss, generic Java applications         |
-| **Apache HTTP**      | ✅ Production   | Configuration parsing with apache_config_parser  |
-| **PHP Discovery**    | ✅ Production   | Multi-distribution with php_config_parser        |
-| **NGINX**            | 🚧 Development  | Module complete, collector integration pending    |
-| **System Collectors** | ✅ Production   | Packages, services, ports, firewall, SELinux     |
+| Collector            | Status      | Description                                       |
+|----------------------|-------------|---------------------------------------------------|
+| **Java Discovery**   | Production  | Tomcat, JBoss, generic Java applications          |
+| **Apache HTTP**      | Production  | Configuration parsing with apache_config_parser   |
+| **PHP Discovery**    | Production  | Multi-distribution with php_config_parser         |
+| **NGINX**            | Development | Module complete, collector integration pending     |
+| **System Collectors**| Production  | Packages, services, ports, firewall, SELinux      |
 
 ## Quick Navigation
 
 ### For New Users
 
-1. **Start Here**: [README.md](README.md) - Project overview, deployment modes, and quick start
-2. **Standalone Setup**: Clone, install collections, run `ansible-playbook discovery.yaml`
-3. **Full Stack Setup**: [CONTAINERS.md](CONTAINERS.md) - MongoDB + Grafana via Podman Compose
-4. **Selective**: Use `ansible-playbook discovery.yaml -e collector_only=java`
+1. **Start Here**: [README.md](README.md) — Project overview and quick start
+2. **Setup**: Clone, install collections, run `ansible-playbook discovery.yaml`
+3. **Selective**: Use `-e collector_only=java` to run a single collector
 
 ### For Developers
 
-1. **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md) - System design and patterns
-2. **Custom Modules**: [playbooks/library/docs/README.md](playbooks/library/docs/README.md)
-3. **Module Examples**:
-   - [process_facts.md](playbooks/library/docs/process_facts.md) - Process discovery
-   - [apache_config_parser.md](playbooks/library/docs/apache_config_parser.md) - Apache parsing
-   - [nginx_config_parser.md](playbooks/library/docs/nginx_config_parser.md) - NGINX parsing (dev)
-   - [php_config_parser.md](playbooks/library/docs/php_config_parser.md) - PHP discovery
-4. **Testing**: Module and filter test frameworks in respective `/tests/` directories
+1. **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md) — System design and patterns
+2. **Custom Modules**: [playbooks/library/docs/](playbooks/library/docs/)
+3. **Testing**: Module and filter test frameworks in `/tests/` directories
 
 ### For Operations Teams
 
-1. **Deployment**: [DEPLOYMENT.md](DEPLOYMENT.md) - Production setup and operations
-2. **Cache Management**: MongoDB operations and maintenance
-3. **Troubleshooting**: Debug mode with `-e debug=true -e log=true`
-4. **Performance**: Selective collection and MongoDB optimization
+1. **Deployment**: [DEPLOYMENT.md](DEPLOYMENT.md) — Installation, configuration, troubleshooting
+2. **Cache Management**: Delete files in `facts_cache/` to clear cached data
+3. **Debugging**: Use `-e debug=true -e log=true -vvv`
 
 ## Key Technical Concepts
 
 ### Selective Collection System
 
-The system implements **absolute precedence** for selective collection:
-
 ```bash
 # Single collector (absolute precedence)
 ansible-playbook discovery.yaml -e collector_only=java
 
-# All collectors (default behavior)  
+# All collectors (default)
 ansible-playbook discovery.yaml
 
-# Individual control (when collector_only not used)
+# Disable specific collectors
 ansible-playbook discovery.yaml -e collector_packages=false
 ```
 
-### Custom Module Architecture
+### Fact Caching (JSON Files)
 
-Four production-ready custom modules replace shell scripts:
+All discovered facts are cached as one JSON file per host in
+`playbooks/facts_cache/`. The directory is created automatically.
+All important facts use `cacheable: true` so subsequent runs skip
+re-discovery when cached data exists.
 
-- **process_facts**: System process discovery via `/proc` filesystem
-- **apache_config_parser**: Complete Apache configuration parsing
-- **php_config_parser**: Multi-distribution PHP configuration discovery  
-- **nginx_config_parser**: Complete NGINX configuration parsing (integration pending)
+```bash
+# View cached data
+cat playbooks/facts_cache/server1.example.com | python3 -m json.tool
 
-### Caching Strategy
+# Clear cache
+rm -rf playbooks/facts_cache/*
+```
 
-- **Standalone mode (default)**: JSON files in `playbooks/facts_cache/` — no external services
-- **Full Stack mode**: MongoDB with configurable TTL + Grafana visualization
-- **Performance**: Subsequent runs skip discovery if cached
-- **Switching**: Copy `ansible.cfg.mongodb` over `ansible.cfg` for Full Stack mode
+## HTML Report Generator
+
+### Overview
+
+The `ansible-discovery-report.py` script generates a comprehensive HTML report
+from JSON fact data collected by the playbooks.
+
+### Features
+
+- **Sidebar navigation** with categorized host list
+- **Summary tables**: OS distribution, application inventory
+- **Detail sections**: per-host Java, PHP, Apache/NGINX configuration
+- **RHEL upgrade eligibility**: Analysis identifying which servers can be
+  converted to RHEL and upgraded to supported versions (8+)
+- **Sortable tables**: Click column headers to sort
+- **Fully configurable**: All text, colors, and labels defined in
+  `ansible-discovery-report.ini`
+
+### Configuration (`ansible-discovery-report.ini`)
+
+The INI file controls all text output and visual settings:
+
+| Section           | Purpose                                             |
+|-------------------|-----------------------------------------------------|
+| `[general]`       | Customer name, version, date format                 |
+| `[colors]`        | Status badge colors (eligible, ineligible, etc.)    |
+| `[report]`        | HTML title, page heading                            |
+| `[sidebar]`       | Sidebar labels                                      |
+| `[nav]`           | Navigation section names                            |
+| `[headings]`      | Section headings in the report body                 |
+| `[table_headers]` | Column headers for every table                      |
+| `[labels]`        | Status labels, field descriptions                   |
+| `[messages]`      | Informational/empty-state messages                  |
+| `[eligibility]`   | Upgrade eligibility criteria and status labels      |
+
+### Input Format
+
+The script reads a JSON file (default `export.json`) containing an array
+of objects with this structure:
+
+```json
+[
+  {
+    "_id": "ansible_factsserver1.example.com",
+    "data": {
+      "ansible_hostname": "server1",
+      "ansible_distribution": "CentOS",
+      "ansible_distribution_major_version": "7",
+      ...
+    }
+  }
+]
+```
+
+> **Note**: This format was originally designed for MongoDB exports.
+> To use with `jsonfile` cache data, aggregate the per-host JSON files into
+> this array format. Example:
+>
+> ```bash
+> cd playbooks/facts_cache
+> python3 -c "
+> import json, glob, os
+> result = []
+> for f in glob.glob('*'):
+>     with open(f) as fh:
+>         data = json.load(fh)
+>         result.append({'_id': 'ansible_facts' + os.path.basename(f), 'data': data})
+> print(json.dumps(result, indent=2))
+> " > ../export.json
+> ```
+
+### Usage
+
+```bash
+# Default (reads export.json, outputs ansible-discovery-report.html)
+python3 ansible-discovery-report.py
+
+# Custom paths
+python3 ansible-discovery-report.py --config custom.ini --input data.json --output report.html
+```
+
+### Command-Line Arguments
+
+| Argument     | Default                          | Description          |
+|--------------|----------------------------------|----------------------|
+| `--config`   | `ansible-discovery-report.ini`   | INI configuration    |
+| `--input`    | `export.json`                    | Input JSON data file |
+| `--output`   | `ansible-discovery-report.html`  | Output HTML file     |
 
 ## Development Workflows
 
 ### Adding New Collectors
 
-1. **Create collector**: `collectors/new_collector.yaml`
-2. **Add to discovery**: Update `discovery.yaml` with include_tasks
-3. **Configure variables**: Add `_collector_new` to `prereqs.yaml`
-4. **Test**: `ansible-playbook discovery.yaml -e collector_only=new_collector`
+1. Create collector: `collectors/new_collector.yaml`
+2. Update `discovery.yaml` with `include_tasks`
+3. Add variable `_collector_new` to `prereqs.yaml`
+4. Test: `ansible-playbook discovery.yaml -e collector_only=new_collector`
 
 ### Custom Module Development
 
-1. **Create module**: `playbooks/library/new_module.py`
-2. **Document**: `playbooks/library/docs/new_module.md`
-3. **Update index**: `playbooks/library/docs/README.md`
-4. **Create tests**: `playbooks/library/tests/test_new_module.py`
-5. **Validate**: `./library/tests/run_tests.sh`
+1. Create module: `playbooks/library/new_module.py`
+2. Document: `playbooks/library/docs/new_module.md`
+3. Create tests: `playbooks/library/tests/test_new_module.py`
+4. Validate: `./library/tests/run_tests.sh`
 
 ### Custom Filter Development
 
-1. **Add filter**: `playbooks/filter_plugins/file_utils.py`
-2. **Create tests**: `playbooks/filter_plugins/tests/test_file_utils.yaml`
-3. **Validate**: `./filter_plugins/tests/run_tests.sh`
-4. **Document**: Update `playbooks/filter_plugins/README.md`
-
-## Current Development Status
-
-### Production Ready ✅
-
-- **Core Architecture**: Selective collection with absolute precedence
-- **Fact Caching**: JSON files (standalone) or MongoDB (full stack)
-- **Process Discovery**: Custom `process_facts` module
-- **Apache Discovery**: Complete configuration parsing
-- **PHP Discovery**: Multi-distribution support
-- **System Collectors**: Packages, services, firewall, etc.
-- **Custom Filters**: File operation helpers
-
-### In Development 🚧
-
-- **NGINX Integration**: Module complete, collector integration pending
-- **Docker Support**: Container discovery and process mapping
-- **Performance Optimization**: Large-scale deployment patterns
-
-### Planned 📋
-
-- **.NET Discovery**: .NET Core/Framework application discovery
-- **Python Discovery**: Django, Flask application support
-- **Ruby Discovery**: Rails application support
-- **Enhanced Docker**: Complete container ecosystem discovery
-
-## Support and Resources
-
-### Testing
-
-```bash
-# Test custom modules
-cd playbooks/
-./library/tests/run_tests.sh
-
-# Test custom filters  
-./filter_plugins/tests/run_tests.sh
-
-# Validate syntax
-ansible-playbook --syntax-check discovery.yaml
-```
-
-### Code Quality
-
-```bash
-# Python linting
-source ../activate  # Activate virtual environment
-flake8 library/ filter_plugins/
-pylint library/ filter_plugins/
-
-# Markdown linting
-markdownlint *.md --fix
-```
-
-### Getting Help
-
-1. **Module Documentation**: Check `playbooks/library/docs/` for detailed module info
-2. **Test Examples**: Review test files for usage patterns
-3. **Debug Mode**: Use `-e debug=true -e log=true` for detailed output
-4. **Cache Inspection**: Check `facts_cache/` files or use MongoDB shell
-
-## Contributing
-
-### Documentation Standards
-
-- **Markdown**: Use markdownlint for formatting consistency
-- **Code Examples**: Include working examples in all documentation
-- **Module Documentation**: Follow Ansible documentation format
-- **Testing**: All new features must include tests
-
-### Code Standards
-
-- **Python**: Follow PEP 8, include docstrings and type hints
-- **Ansible**: Use descriptive task names and proper YAML formatting
-- **Testing**: Maintain test coverage for all custom components
-- **Versioning**: Use semantic versioning for releases
-### Code Standards
-
-- **Python**: Follow PEP 8, include docstrings and type hints
-- **Ansible**: Use descriptive task names and proper YAML formatting
-- **Testing**: Maintain test coverage for all custom components
-- **Versioning**: Use semantic versioning for releases
-
-- **Versioning**: Use semantic versioning for releases
-
-## Contributing
-
-### Documentation Standards
-- Use clear, descriptive headings
-- Include working code examples
-- Provide troubleshooting sections
-- Maintain consistent formatting
-- Update this index when adding new docs
-
-### Code Documentation
-- Document all variables and their defaults
-- Include usage examples for each module
-- Explain container-specific behavior
-- Provide error handling patterns
-
-## Support
-
-### Common Issues
-- **Permission Problems**: See graceful degradation patterns in ARCHITECTURE.md
-- **Container Detection**: Multi-method detection examples in collectors/README.md
-- **Cache Issues**: See DEPLOYMENT.md for cache management in both modes
-- **Java Discovery**: Detailed troubleshooting in java/README.md
-
-### Debugging Resources
-- **Debug Mode**: Use `-e debug=true -e log=true`
-- **Single Collector**: Use `-e collector_only=COLLECTOR`
-- **Verbose Output**: Add `-vvv` to ansible-playbook commands
-- **Cache Inspection**: MongoDB queries in DEPLOYMENT.md or local JSON files
-
-### Getting Help
-1. Check relevant documentation section first
-2. Review troubleshooting guides in component docs
-3. Use debug mode for detailed execution information
-4. Inspect fact cache files or MongoDB for stored facts
+1. Add filter: `playbooks/filter_plugins/file_utils.py`
+2. Create tests: `playbooks/filter_plugins/tests/test_file_utils.yaml`
+3. Validate: `./filter_plugins/tests/run_tests.sh`
+4. Document: Update `playbooks/filter_plugins/README.md`
 
 ## Technical Specifications
 
 ### System Requirements
+
 - Ansible 2.14+
 - Python 3.9+
-- MongoDB 4.4+ (optional, for Full Stack mode only)
-- Required collections: see galaxy-requirements.yaml
+- Required collections: see `galaxy-requirements.yaml`
 
 ### Supported Platforms
-- **Primary**: RHEL family (8+)
+
+- **Primary**: RHEL family (7+)
 - **Secondary**: Ubuntu/Debian, SUSE
 - **Containers**: Docker, Podman, LXC
 - **Cloud**: AWS, Azure, GCP instances
-
-### Performance Characteristics
-- **Execution Time**: 30-120 seconds per host (depending on collectors)
-- **Memory Usage**: 200-500MB per ansible-playbook process
-- **Network**: Minimal traffic, primarily SSH
-- **Storage**: MongoDB cache grows with discovered facts
-
-## Version Information
-
-### Current Version
-- **Discovery System**: 2.0.0 (selective collection architecture)
-- **Documentation**: 2.0.0 (complete rewrite)
-- **Collections**: See galaxy-requirements.yaml for versions
-
-### Compatibility Matrix
-- **Ansible**: 2.14-2.16 (tested)
-- **Python**: 3.9-3.12 (supported)
-- **MongoDB**: 4.4-7.0 (compatible)
-- **Platforms**: See support matrix in DEPLOYMENT.md

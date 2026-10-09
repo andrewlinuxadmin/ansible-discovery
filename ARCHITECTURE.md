@@ -2,7 +2,10 @@
 
 ## Overview
 
-The Ansible Discovery System implements a modular, selective collection architecture with custom modules, intelligent caching, and cross-platform compatibility. The system prioritizes modern module-based approaches while maintaining fallback mechanisms for legacy environments.
+The Ansible Discovery System implements a modular, selective collection
+architecture with custom modules, intelligent caching, and cross-platform
+compatibility. The system prioritizes modern module-based approaches while
+maintaining fallback mechanisms for legacy environments.
 
 ## Core Architecture
 
@@ -22,7 +25,7 @@ discovery.yaml (orchestrator)
 2. **Process Collection**: Gather running processes using custom `process_facts` module
 3. **System Discovery**: Execute enabled collectors conditionally based on `_collector_*` variables
 4. **Application Discovery**: Java/Apache/PHP based on detected processes and custom modules
-5. **Data Consolidation**: Store all facts with configurable caching (JSON files or MongoDB)
+5. **Data Consolidation**: Store all facts as cached JSON files with configurable TTL
 
 ## Selective Collection System
 
@@ -31,22 +34,8 @@ discovery.yaml (orchestrator)
 The system implements **absolute precedence** for `collector_only`:
 
 ```yaml
-# Logic in prereqs.yaml:
-_collector_java: "{{ (collector_only == 'java') if collector_only is defined 
+_collector_java: "{{ (collector_only == 'java') if collector_only is defined
                     else (collector_java | default(true) | bool) }}"
-```
-
-### Usage Patterns
-
-```bash
-# Single collector (absolute precedence) - only executes one collector
-ansible-playbook discovery.yaml -e collector_only=java
-
-# All collectors (default behavior) - executes all enabled collectors
-ansible-playbook discovery.yaml
-
-# Individual control (when collector_only not used) - granular control
-ansible-playbook discovery.yaml -e collector_packages=false -e collector_services=false
 ```
 
 ### Precedence Matrix
@@ -91,7 +80,6 @@ ansible-playbook discovery.yaml -e collector_packages=false -e collector_service
 - **Features**: Two output formats (readable/crossplane), security filtering, include processing
 - **Dependencies**: None (completely standalone)
 - **Output**: Configurable format - readable hierarchical or technical crossplane
-- **Status**: 🚧 Module complete, collector integration in development
 
 #### php_config_parser.py
 
@@ -100,20 +88,6 @@ ansible-playbook discovery.yaml -e collector_packages=false -e collector_service
 - **Features**: Auto-discovery, SCL support, multi-version handling
 - **Dependencies**: None (pure Python)
 - **Output**: Configuration files list with settings and extensions
-
-### Module Integration Pattern
-
-```yaml
-# Modern collector pattern using custom modules
-- name: Parse PHP configurations
-  php_config_parser:
-  register: php_config_raw
-
-- name: Create PHP facts
-  ansible.builtin.set_fact:
-    php_info: "{{ php_config_raw }}"
-    cacheable: true
-```
 
 ## Data Flow Architecture
 
@@ -124,115 +98,35 @@ ansible-playbook discovery.yaml
 ├── prereqs.yaml → Configure selective collection variables
 ├── process_facts → Collect all system processes
 ├── System Collectors (conditional)
-│   ├── packages.yaml → fedora.linux_system_roles.packages
-│   ├── services.yaml → fedora.linux_system_roles.services
+│   ├── packages.yaml → ansible.builtin.package_facts
+│   ├── services.yaml → ansible.builtin.service_facts
 │   └── ports.yaml → community.general.listen_ports_facts
 └── Application Collectors (process-based)
     ├── java/ → Process classification + discovery
     ├── apache.yaml → apache_config_parser module
-    ├── nginx.yaml → nginx_config_parser module (production)
+    ├── nginx.yaml → nginx_config_parser module
     └── php.yaml → php_config_parser module
 ```
 
-### Caching Strategy
+### Fact Caching
 
-The system supports two caching backends. Both use `cacheable: true` on
-all important facts and a configurable TTL (default: 0 = infinite).
-
-#### Standalone Mode (default) — JSON files
-
-No external services required. Facts are stored as one JSON file per host:
+Facts are stored as one JSON file per host using the built-in `jsonfile` plugin:
 
 ```ini
-# ansible.cfg (default)
+# ansible.cfg
 fact_caching = ansible.builtin.jsonfile
 fact_caching_timeout = 0
 fact_caching_connection = ./facts_cache
 ```
 
-- **Storage**: `playbooks/facts_cache/<hostname>` (one file per host)
+- **Storage**: `playbooks/facts_cache/<hostname>` (one file per host, auto-created)
+- **TTL**: Configurable (default: 0 = infinite)
 - **Performance**: Subsequent runs skip discovery if cached data exists
-- **Management**: Delete files to clear cache (`rm facts_cache/<hostname>`)
+- **Management**: `rm facts_cache/<hostname>` to clear a host; `rm -rf facts_cache/*` to clear all
 
-#### Full Stack Mode — MongoDB
+## Hybrid Collection Pattern
 
-For centralized storage and Grafana visualization:
-
-```ini
-# ansible.cfg.mongodb
-fact_caching = community.mongodb.mongodb
-fact_caching_timeout = 0
-fact_caching_connection = mongodb://localhost:27017/ansible
-```
-
-- **Storage**: MongoDB `ansible.cache` collection
-- **Document structure**: `{_id: "ansible_facts<hostname>", data: {...}}`
-- **Performance**: Subsequent runs skip discovery if cached data exists
-- **Visualization**: Grafana accesses facts via MongoDB Proxy REST API
-
-### Cache Inspection
-
-```bash
-# Standalone mode — read JSON files directly
-cat playbooks/facts_cache/server1.example.com | python3 -m json.tool
-
-# Full Stack mode — query MongoDB
-mongosh ansible
-db.cache.find({}, {_id: 1}).toArray()
-db.cache.findOne({_id: "ansible_facts<hostname>"}).data
-db.cache.drop()  # Clear all cache
-```
-
-## Performance Architecture
-
-### Optimization Strategies
-
-1. **Selective Collection**: Use `collector_only` to run specific collectors
-2. **Fact Caching**: Avoid re-discovery with persistent caching (JSON files or MongoDB)
-3. **Custom Modules**: Replace shell scripts with efficient Python modules
-4. **Conditional Execution**: Skip collectors when processes not detected
-5. **Custom Filters**: Use `file_exists` filter vs. multiple `stat` calls
-
-### Development Status
-
-| Component             | Status          | Notes                                   |
-|-----------------------|-----------------|-----------------------------------------|
-| Process Facts Module  | ✅ Production   | Replaces AWK scripts                    |
-| Apache Config Parser  | ✅ Production   | Full configuration parsing              |
-| PHP Config Parser     | ✅ Production   | Multi-distribution support              |
-| NGINX Config Parser   | ✅ Production   | Complete with PHP-FPM detection        |
-| Selective Collection  | ✅ Production   | Absolute precedence implemented         |
-| Fact Caching          | ✅ Production   | JSON files (default) or MongoDB         |
-| Custom Filters        | ✅ Production   | File operation filters                  |
-
-## Technical Specifications
-
-### Dependencies
-
-#### Required Collections
-
-- `ansible.posix`
-- `community.general`
-- `community.mongodb` (only for Full Stack mode with MongoDB caching)
-- `fedora.linux_system_roles`
-
-#### Python Dependencies
-
-- **Core**: Python 2.7+ or 3.x
-- **apache_config_parser**: `apacheconfig` package
-- **Other modules**: No external dependencies
-
-### System Requirements
-
-- **Target Systems**: Linux (RHEL, Debian, SUSE families)
-- **Control Node**: Ansible 2.9+, Python 3.9+
-- **Database**: MongoDB (optional, for Full Stack mode only)
-- **Network**: SSH connectivity to target hosts
-- **Permissions**: Sudo access for system discovery
-
-### Hybrid Collection Pattern
-
-All collectors follow this standard pattern:
+All system collectors follow this standard pattern:
 
 ```yaml
 # 1. Try official role
@@ -244,7 +138,6 @@ All collectors follow this standard pattern:
 # 2. Manual fallback
 - name: Fallback manual method
   shell: |
-    # JSON output generation
     echo '{"key": "value", "source": "manual"}'
   register: manual_result
   when: result is failed
@@ -260,34 +153,22 @@ All collectors follow this standard pattern:
     cacheable: true
 ```
 
-### Standard JSON Output
-
-```json
-{
-  "source": "fedora.linux_system_roles|manual|container",
-  "status": "active|inactive|unknown",
-  "note": "additional_context_when_applicable"
-}
-```
-
 ## Available Collectors
 
-| Collector | Official Module | Fallback Method | Container Aware |
-|-----------|-----------------|-----------------|-----------------|
-| packages | `package_facts` | `dpkg -l` / `rpm -qa` | ✓ |
-| services | `service_facts` | `systemctl` / `chkconfig` | ✓ |
-| ports | `listen_ports_facts` | `/proc/net/tcp` parsing | ✓ |
-| firewall | `firewall_lib_facts` | `iptables -L` / `firewall-cmd` | ✓ |
-| bootloader | `bootloader_facts` | `grub.cfg` parsing | ✓ |
-| selinux | `selinux_modules_facts` | `getenforce` / `sestatus` | ✓ |
-| blockdev | `blockdev_info` | `lsblk` / `fdisk -l` | ✓ |
-| java | Process-based | Command line parsing | ✓ |
-| apache | Process-based | Config file analysis | ✓ |
-| nginx | Process-based | Server blocks, PHP-FPM detection | ✓ |
+| Collector  | Official Module          | Fallback Method                  | Container Aware |
+|------------|--------------------------|----------------------------------|-----------------|
+| packages   | `package_facts`          | `dpkg -l` / `rpm -qa`           | Yes             |
+| services   | `service_facts`          | `systemctl` / `chkconfig`       | Yes             |
+| ports      | `listen_ports_facts`     | `/proc/net/tcp` parsing          | Yes             |
+| firewall   | `firewall_lib_facts`     | `iptables -L` / `firewall-cmd`  | Yes             |
+| bootloader | `bootloader_facts`       | `grub.cfg` parsing               | Yes             |
+| selinux    | `selinux_modules_facts`  | `getenforce` / `sestatus`        | Yes             |
+| blockdev   | `blockdev_info`          | `lsblk` / `fdisk -l`            | Yes             |
+| java       | Process-based            | Command line parsing             | Yes             |
+| apache     | Process-based            | Config file analysis             | Yes             |
+| nginx      | Process-based            | Server blocks, PHP-FPM detection | Yes             |
 
 ## Java Discovery Pipeline
-
-### Multi-Stage Process
 
 ```text
 1. java.yaml: Process classification (tomcat/jboss/jar)
@@ -296,177 +177,35 @@ All collectors follow this standard pattern:
 4. Consolidation: Merge into unified java_processes structure
 ```
 
-### Process Classification
+## HTML Report Generator
 
-```yaml
-# Classification logic
-app_type: >-
-  {{
-    'tomcat' if 'catalina' in args or 'tomcat' in args else
-    'jboss' if 'jboss' in args or 'wildfly' in args else
-    'springboot' if 'spring' in args else
-    'quarkus' if 'quarkus' in args else
-    'java-app'
-  }}
-```
+The `ansible-discovery-report.py` script generates a comprehensive HTML report
+from collected facts. See [DOCS.md](DOCS.md) for full documentation.
 
-### Data Consolidation
+## Technical Specifications
 
-Final `java_processes` structure includes:
+### Required Collections
 
-- Basic process info (PID, user, command)
-- Java version detection
-- Application-specific data (tomcat_info, jboss_info, jar_info)
-- Configuration file analysis
-- Deployment information
+- `ansible.posix`
+- `community.general`
+- `fedora.linux_system_roles`
 
-## Fact Caching Configuration
+### System Requirements
 
-### Standalone Mode (default)
+- **Target Systems**: Linux (RHEL, Debian, SUSE families)
+- **Control Node**: Ansible 2.9+, Python 3.9+
+- **Network**: SSH connectivity to target hosts
+- **Permissions**: Sudo access for system discovery
 
-```ini
-# ansible.cfg
-fact_caching = ansible.builtin.jsonfile
-fact_caching_timeout = 0  # Infinite cache
-fact_caching_connection = ./facts_cache
-```
+### Development Status
 
-### Full Stack Mode (MongoDB)
-
-```ini
-# ansible.cfg.mongodb
-fact_caching = community.mongodb.mongodb
-fact_caching_timeout = 0  # Infinite cache
-fact_caching_connection = mongodb://localhost:27017/ansible
-```
-
-### Cache Usage
-
-- All important facts use `cacheable: true`
-- TTL=0 for development (infinite cache)
-- Manual cleanup via MongoDB when needed
-- Cache validation through subsequent runs
-
-### Cache Inspection
-
-```bash
-# Connect to MongoDB
-mongosh ansible
-
-# List cached hosts
-db.cache.find({}, {_id: 1}).toArray()
-
-# Inspect specific host data
-db.cache.findOne({_id: "ansible_facts<hostname>"}).data
-
-# Clear cache
-db.cache.drop()
-```
-
-## Custom Filters
-
-### File Operation Filters
-
-```python
-# filter_plugins/file_utils.py
-class FilterModule:
-    def filters(self):
-        return {
-            "file_exists": self.file_exists,    # Regular file check
-            "path_exists": self.path_exists,    # Any path check
-            "file_readable": self.file_readable # Readable file check
-        }
-```
-
-### Usage in Discovery
-
-```yaml
-# Conditional file processing
-- name: Read Tomcat config
-  slurp:
-    src: "{{ tomcat_home }}/conf/server.xml"
-  when: "{{ tomcat_home }}/conf/server.xml" | file_readable
-
-# JAR file detection
-- name: Find application JAR
-  set_fact:
-    jar_path: "{{ candidates | select('file_exists') | first | default('unknown') }}"
-  vars:
-    candidates:
-      - "{{ app_home }}/lib/app.jar"
-      - "{{ app_home }}/app.jar"
-```
-
-## Error Handling Strategy
-
-### Graceful Degradation
-
-1. **Try official modules first** (best data quality)
-2. **Fall back to manual collection** (maintains functionality)
-3. **Detect containers** (adjust expectations)
-4. **Provide meaningful defaults** (avoid failures)
-
-### Container Detection
-
-```bash
-# Standard container detection
-if [ -f /.dockerenv ] || grep -q "docker\|lxc\|podman" /proc/1/cgroup 2>/dev/null; then
-  echo '{"status": "container", "note": "managed_by_host"}'
-```
-
-### Cross-Platform Support
-
-- **RHEL Family**: Primary target with full feature support
-- **Debian Family**: Tested fallback methods
-- **SUSE Family**: Basic compatibility
-- **Containers**: Adjusted behavior and expectations
-
-## Performance Optimizations
-
-### Process Efficiency
-
-- Custom `process_facts` module with kernel thread exclusion
-- PID-based mapping for efficient correlation
-- JSON parsing optimized with AWK in shell commands
-
-### Conditional Execution
-
-- `include_tasks` for runtime evaluation
-- Process detection before expensive analysis
-- Container detection for automatic skip
-
-## Development Guidelines
-
-### Code Standards
-
-```yaml
-# Required patterns
-- name: Descriptive task name
-  module: 
-    param: value
-  register: result
-  failed_when: false      # For discovery tasks
-  changed_when: false     # For fact collection
-  no_log: "{{ not log }}" # For verbose output
-  when: condition         # For conditional execution
-
-- name: Set facts
-  set_fact:
-    fact_name: "{{ value }}"
-    cacheable: true       # Required for important facts
-```
-
-### Testing Requirements
-
-1. **Syntax validation**: `ansible-playbook --syntax-check`
-2. **Dry run testing**: `--check --diff`
-3. **Selective testing**: `-e collector_only=MODULE`
-4. **Debug validation**: `-e debug=true`
-5. **Cache verification**: Inspect cache files or MongoDB
-
-### Documentation Standards
-
-- Update collector table when adding new modules
-- Include JSON output examples
-- Document container behavior differences
-- Provide usage examples for new features
+| Component             | Status      | Notes                              |
+|-----------------------|-------------|------------------------------------|
+| Process Facts Module  | Production  | Replaces AWK scripts               |
+| Apache Config Parser  | Production  | Full configuration parsing         |
+| PHP Config Parser     | Production  | Multi-distribution support         |
+| NGINX Config Parser   | Production  | Complete with PHP-FPM detection    |
+| Selective Collection  | Production  | Absolute precedence implemented    |
+| JSON File Caching     | Production  | Built-in, no external dependencies |
+| Custom Filters        | Production  | File operation filters             |
+| HTML Report Generator | Production  | Configurable via INI file          |

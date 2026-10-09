@@ -10,7 +10,7 @@ exclude_paths:
   - .cache/
   - .github/
   - collections/
-  - mongodbdata/
+  - facts_cache/
 
 # Usar tags específicas
 tags:

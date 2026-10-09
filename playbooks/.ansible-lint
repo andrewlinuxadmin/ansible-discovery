@@ -10,7 +10,7 @@ exclude_paths:
   - .cache/
   - .github/
   - collections/
-  - mongodbdata/
+  - facts_cache/
 
 # Mapeamento de tipos de arquivo para evitar erros de sintaxe
 kinds:

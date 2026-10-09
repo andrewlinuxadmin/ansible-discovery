@@ -12,7 +12,6 @@
 ### Collection Dependencies
 
 ```bash
-# Install required Ansible collections
 cd playbooks/
 ansible-galaxy collection install -r galaxy-requirements.yaml
 ```
@@ -20,127 +19,45 @@ ansible-galaxy collection install -r galaxy-requirements.yaml
 ### Python Environment
 
 ```bash
-# From project root
-source activate  # Activates virtual environment
+source activate
 pip install -r pip-venv-requirements.txt
 ```
 
-## Deployment Modes
-
-### Standalone Mode (default)
-
-No external services required. Facts are cached as local JSON files.
-This is the simplest way to get started.
+## Installation
 
 ```bash
-# Navigate to playbooks directory
-cd playbooks/
+# Clone and setup
+git clone https://github.com/andrewlinuxadmin/ansible-discovery.git
+cd ansible-discovery
+source activate
+pip install -r pip-venv-requirements.txt
 
-# Copy and configure inventory
+# Configure Ansible
+cd playbooks/
+ansible-galaxy collection install -r galaxy-requirements.yaml
 cp inventory.example inventory
 # Edit inventory with your target hosts
+```
+
+## Running Discovery
+
+```bash
+cd playbooks/
 
 # Full discovery (all collectors)
 ansible-playbook discovery.yaml
 
-# Facts are cached in playbooks/facts_cache/
-ls facts_cache/
-cat facts_cache/server1.example.com | python3 -m json.tool
-```
-
-#### Cache Management (Standalone)
-
-```bash
-# View cached hosts
-ls playbooks/facts_cache/
-
-# View facts for a specific host
-cat facts_cache/server1.example.com | python3 -m json.tool
-
-# Clear cache for a specific host
-rm facts_cache/server1.example.com
-
-# Clear all cache
-rm -rf facts_cache/*
-```
-
-### Full Stack Mode (MongoDB + Grafana)
-
-For centralized storage and visual exploration via Grafana dashboards.
-Requires MongoDB, MongoDB Proxy, and Grafana (see [CONTAINERS.md](CONTAINERS.md)).
-
-#### MongoDB Setup
-
-```bash
-# Option 1: Use provided Podman Compose stack (recommended)
-podman-compose up -d
-
-# Option 2: Local MongoDB
-systemctl start mongod
-
-# Option 3: Docker alternative
-docker run -d -p 27017:27017 --name ansible-mongo mongo:latest
-```
-
-#### Switch to MongoDB Caching
-
-```bash
-cd playbooks/
-cp ansible.cfg.mongodb ansible.cfg
-```
-
-#### Quick Start (Full Stack)
-
-```bash
-cd playbooks/
-
-# Full discovery
-ansible-playbook discovery.yaml
-
-# Access Grafana at http://localhost:3000 (admin / redhat)
-```
-
-#### Cache Management (MongoDB)
-
-```bash
-# Clear all cache
-mongosh ansible --eval "db.cache.drop()"
-
-# Clear specific host
-mongosh ansible --eval "db.cache.deleteOne({_id:'ansible_factshostname.domain.com'})"
-
-# Check cache size
-mongosh ansible --eval "db.stats()"
-```
-
-## Usage
-
-```bash
-cd playbooks/
-
-# Single collector (selective)
+# Selective discovery
 ansible-playbook discovery.yaml -e collector_only=java
 
-# Debug mode with verbose output
+# Individual collector control
+ansible-playbook discovery.yaml -e collector_packages=false -e collector_services=false
+
+# Debug mode
 ansible-playbook discovery.yaml -e debug=true -e log=true
 ```
 
-### Verification
-
-```bash
-# Check cached facts (standalone mode)
-ls facts_cache/
-cat facts_cache/server1.example.com | python3 -m json.tool
-
-# Check MongoDB cache (full stack mode)
-mongosh ansible
-> db.cache.find({}, {_id: 1}).toArray()
-> exit
-
-# Validate custom modules
-ansible localhost -m process_facts
-ansible localhost -m php_config_parser
-```
+Facts are cached as JSON files in `playbooks/facts_cache/` (created automatically).
 
 ## Configuration
 
@@ -156,15 +73,12 @@ db1.company.com ansible_user=ansible
 [development]
 dev1.company.com ansible_user=root
 localhost ansible_connection=local
-
-[containers]
-app-container ansible_connection=docker
 ```
 
 ### Ansible Configuration
 
 ```ini
-# ansible.cfg (standalone mode — default)
+# ansible.cfg
 [defaults]
 inventory = inventory
 host_key_checking = False
@@ -183,20 +97,10 @@ become_method = sudo
 become_user = root
 ```
 
-To switch to MongoDB caching, use `ansible.cfg.mongodb`:
-
-```ini
-# ansible.cfg.mongodb (full stack mode)
-fact_caching = community.mongodb.mongodb
-fact_caching_timeout = 0
-fact_caching_connection = mongodb://localhost:27017/ansible
-```
-
 ### Variable Configuration
 
 ```yaml
 # group_vars/all.yml
-# System collectors
 collector_packages: true
 collector_services: true
 collector_ports: true
@@ -204,218 +108,72 @@ collector_firewall: true
 collector_bootloader: true
 collector_selinux: true
 collector_blockdev: true
-
-# Application collectors
 collector_java: true
 collector_apache: true
-collector_nginx: true    # Note: Module in development
+collector_nginx: true
 collector_php: true
 
-# Output control
 debug: false
 log: false
 ```
+
+## Cache Management
+
+```bash
+# List cached hosts
+ls playbooks/facts_cache/
+
+# View facts for a specific host
+cat playbooks/facts_cache/server1.example.com | python3 -m json.tool
+
+# Clear cache for a specific host
+rm playbooks/facts_cache/server1.example.com
+
+# Clear all cache
+rm -rf playbooks/facts_cache/*
+```
+
+## Report Generation
+
+After collecting facts, generate an HTML report:
+
+```bash
+# Default: reads export.json, produces ansible-discovery-report.html
+python3 ansible-discovery-report.py
+
+# Custom input/output
+python3 ansible-discovery-report.py --config my.ini --input data.json --output report.html
+```
+
+See [DOCS.md](DOCS.md) for full report generator documentation.
 
 ## Production Deployment
 
 ### Security Considerations
 
-- **SSH Keys**: Use key-based authentication instead of passwords
-- **Sudo Access**: Configure passwordless sudo for automation accounts
-- **Network**: Restrict MongoDB access to control nodes only (full stack mode)
-- **Data**: Consider TTL settings for sensitive cached data
-
-### Performance Tuning
-
-```yaml
-# For large environments
-forks = 50
-host_key_checking = False
-gathering = smart
-fact_caching_timeout = 86400  # 24 hours instead of infinite
-```
-
-### Selective Collection Strategy
+- Use SSH key-based authentication
+- Configure passwordless sudo for automation accounts
+- Consider TTL settings for sensitive cached data
+- Use Ansible Vault for credentials
 
 ```bash
-# For large-scale deployments, use selective collection
-# Infrastructure discovery
-ansible-playbook discovery.yaml -e collector_only=packages -l production
-
-# Application discovery
-ansible-playbook discovery.yaml -e collector_only=java -l production
-
-# Web server discovery
-ansible-playbook discovery.yaml -e collector_only=apache -l web_servers
-```
-
-## Operations
-
-### Cache Management
-
-```bash
-# Standalone mode: manage JSON files directly
-ls facts_cache/                          # List cached hosts
-cat facts_cache/<hostname>               # View host facts
-rm facts_cache/<hostname>                # Clear specific host
-rm -rf facts_cache/*                     # Clear all cache
-
-# Full stack mode: use MongoDB commands
-mongosh ansible --eval "db.cache.deleteOne({_id:'ansible_factshostname.domain.com'})"
-mongosh ansible --eval "db.stats()"
-```
-
-### Troubleshooting
-
-#### Common Issues
-
-1. **Module not found**: Ensure you're in `playbooks/` directory
-2. **MongoDB connection** (full stack only): Verify MongoDB is running on localhost:27017
-3. **SSH failures**: Check inventory and SSH key configuration
-4. **Permission denied**: Ensure sudo access is configured
-
-#### Debug Commands
-
-```bash
-# Test connectivity
-ansible all -m ping
-
-# Check custom modules
-ansible localhost -m apache_config_parser -a "path=/etc/httpd/conf/httpd.conf configroot=/etc/httpd"
-
-# Validate syntax
-ansible-playbook --syntax-check discovery.yaml
-
-# Run with maximum verbosity
-ansible-playbook discovery.yaml -vvv
-```
-
-### Monitoring and Maintenance
-
-#### Health Checks
-
-```bash
-# Weekly: Validate modules
-./filter_plugins/tests/run_tests.sh
-./library/tests/run_tests.sh
-
-# Monthly: Clear stale cache
-mongosh ansible --eval "db.cache.drop()"
-
-# As needed: Update collections
-ansible-galaxy collection install -r galaxy-requirements.yaml --force
-```
-
-#### Log Analysis
-
-```bash
-# Enable detailed logging
-ansible-playbook discovery.yaml -e log=true -e debug=true > discovery.log 2>&1
-
-# Parse logs for errors
-grep -i error discovery.log
-grep -i failed discovery.log
-```
-
-## Advanced Operations
-
-### Custom Module Development
-
-```bash
-# Development workflow
-cd playbooks/
-
-# 1. Create module in library/
-vim library/new_module.py
-
-# 2. Create documentation
-vim library/docs/new_module.md
-
-# 3. Update module index
-vim library/docs/README.md
-
-# 4. Create tests
-vim library/tests/test_new_module.py
-
-# 5. Run tests
-./library/tests/run_tests.sh
-```
-
-### Filter Plugin Development
-
-```bash
-# 1. Add filter to file_utils.py
-vim filter_plugins/file_utils.py
-
-# 2. Update tests
-vim filter_plugins/tests/test_file_utils.yaml
-
-# 3. Run tests
-./filter_plugins/tests/run_tests.sh
-
-# 4. Update documentation
-vim filter_plugins/README.md
-```
-
-### Collector Development
-
-```bash
-# 1. Create collector
-vim collectors/new_collector.yaml
-
-# 2. Add to discovery.yaml
-vim discovery.yaml
-
-# 3. Add variable to prereqs.yaml
-vim prereqs.yaml
-
-# 4. Test individually
-ansible-playbook discovery.yaml -e collector_only=new_collector
-```
-
-## Status and Roadmap
-
-### Current Status
-
-- ✅ **Production Ready**: process_facts, apache_config_parser, php_config_parser, custom filters
-- ✅ **Stable**: Selective collection system, MongoDB caching, system collectors
-- 🚧 **In Development**: nginx_config_parser collector integration
-- 📋 **Planned**: Docker support, .NET discovery, Python application discovery
-
-### Known Limitations
-
-- NGINX module complete but collector integration pending
-- Docker container discovery in development
-- Limited support for Windows targets
-- Requires sudo access for complete system discovery
-
-```yaml
-# Secure inventory management
-- name: Production inventory encryption
-  vars:
-    ansible_ssh_private_key_file: "{{ vault_ssh_key_path }}"
-    ansible_become_pass: "{{ vault_sudo_password }}"
-  
-# Vault integration
 ansible-vault create group_vars/production.yml
 ansible-vault edit group_vars/production.yml
 ```
 
-### Performance Optimization
+### Performance Tuning
 
 ```ini
-# ansible.cfg for production
+# ansible.cfg for large environments
 [defaults]
 forks = 50
-poll_interval = 1
 timeout = 30
 gathering = smart
-fact_caching_timeout = 3600  # 1 hour cache
+fact_caching_timeout = 86400  # 24 hours
 
 [ssh_connection]
 ssh_args = -C -o ControlMaster=auto -o ControlPersist=300s
 pipelining = True
-control_path = /tmp/ansible-ssh-%%h-%%p-%%r
 ```
 
 ### Batch Processing
@@ -428,351 +186,44 @@ done
 
 # Parallel execution with limits
 ansible-playbook discovery.yaml -l "batch1" --forks=10
-ansible-playbook discovery.yaml -l "batch2" --forks=10
 ```
 
-## Cache Management
+## Troubleshooting
 
-### MongoDB Operations
+### Common Issues
+
+1. **Module not found**: Ensure you're in the `playbooks/` directory
+2. **SSH failures**: Check inventory and SSH key configuration
+3. **Permission denied**: Ensure sudo access is configured
+4. **Stale cache**: Delete `facts_cache/` contents to force re-discovery
+
+### Debug Commands
 
 ```bash
-## Status and Roadmap
-
-### Current Status
-
-- ✅ **Production Ready**: process_facts, apache_config_parser, php_config_parser, custom filters
-- ✅ **Stable**: Selective collection system, MongoDB caching, system collectors
-- 🚧 **In Development**: nginx_config_parser collector integration
-- 📋 **Planned**: Docker support, .NET discovery, Python application discovery
-
-### Known Limitations
-
-- NGINX module complete but collector integration pending
-- Docker container discovery in development
-- Limited support for Windows targets
-- Requires sudo access for complete system discovery
-```
-
-### Cache Statistics
-
-```bash
-# Cache size and statistics
-db.stats()
-db.cache.stats()
-
-# Count cached hosts
-db.cache.countDocuments()
-
-# Find large cache entries
-db.cache.find({}, {_id: 1, size: {$bsonSize: "$$ROOT"}}).sort({size: -1}).limit(10)
-```
-
-## Monitoring and Troubleshooting
-
-### Log Analysis
-
-```bash
-# Enable verbose logging
-export ANSIBLE_LOG_PATH=/var/log/ansible-discovery.log
-ansible-playbook discovery.yaml -vvv
-
-# Real-time log monitoring
-tail -f /var/log/ansible-discovery.log
-
-# Error filtering
-grep -i "error\|failed\|fatal" /var/log/ansible-discovery.log
-```
-
-### Performance Monitoring
-
-```yaml
-# Add timing to playbooks
-- name: Start discovery timer
-  set_fact:
-    discovery_start_time: "{{ ansible_date_time.epoch }}"
-
-- name: Calculate discovery duration
-  set_fact:
-    discovery_duration: "{{ ansible_date_time.epoch | int - discovery_start_time | int }}"
-    cacheable: true
-```
-
-### Health Checks
-
-```bash
-# Verify MongoDB connectivity
-ansible localhost -m shell -a "mongosh --eval 'db.runCommand({ping: 1})'"
-
-# Test collection dependencies
-ansible-galaxy collection list | grep -E "fedora.linux_system_roles|community.mongodb"
-
-# Validate inventory
-ansible-inventory --list --yaml
-
 # Test connectivity
-ansible all -m ping -o
-```
+ansible all -m ping
 
-## Error Handling
+# Check custom modules
+ansible localhost -m process_facts
+ansible localhost -m apache_config_parser -a "path=/etc/httpd/conf/httpd.conf configroot=/etc/httpd"
 
-### Common Issues and Solutions
+# Validate syntax
+ansible-playbook --syntax-check discovery.yaml
 
-#### Permission Denied
-
-```yaml
-# Solution: Graceful permission handling
-- name: Try privileged operation
-  command: "{{ privileged_command }}"
-  register: privileged_result
-  failed_when: false
-  become: true
-
-- name: Fallback unprivileged operation
-  command: "{{ unprivileged_command }}"
-  register: unprivileged_result
-  when: privileged_result.rc != 0
-```
-
-#### Missing Dependencies
-
-```yaml
-# Solution: Dynamic dependency checking
-- name: Check for required tools
-  command: "which {{ item }}"
-  register: tool_check
-  failed_when: false
-  loop:
-    - systemctl
-    - netstat
-    - lsblk
-
-- name: Set available tools
-  set_fact:
-    available_tools: "{{ tool_check.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
-```
-
-#### Container Detection Issues
-
-```yaml
-# Solution: Multi-method container detection
-- name: Comprehensive container detection
-  shell: |
-    # Multiple detection methods
-    if [ -f /.dockerenv ]; then
-      echo "docker"
-    elif [ -f /run/.containerenv ]; then
-      echo "podman"
-    elif grep -q "docker\|lxc\|containerd" /proc/1/cgroup 2>/dev/null; then
-      echo "container"
-    elif [ "${container:-}" = "docker" ] || [ "${container:-}" = "podman" ]; then
-      echo "$container"
-    else
-      echo "host"
-    fi
-  register: container_detection
-```
-
-### Debugging Strategies
-
-#### Debug Mode Usage
-
-```bash
-# Full debug output
-ansible-playbook discovery.yaml -e debug=true -e log=true -vvv
-
-# Specific collector debugging
-ansible-playbook discovery.yaml -e collector_only=packages -e debug=true
+# Run with maximum verbosity
+ansible-playbook discovery.yaml -vvv
 
 # Step-by-step execution
 ansible-playbook discovery.yaml --step
 ```
 
-#### Manual Testing
+### Log Analysis
 
 ```bash
-# Test individual tasks
-ansible localhost -m fedora.linux_system_roles.package_facts
+# Enable detailed logging
+export ANSIBLE_LOG_PATH=/var/log/ansible-discovery.log
+ansible-playbook discovery.yaml -vvv
 
-# Test custom filters
-ansible localhost -m debug -a "msg={{ '/etc/passwd' | file_exists }}"
-
-# Test shell commands
-ansible localhost -m shell -a "ps aux | grep java"
-```
-
-## Integration
-
-### CI/CD Pipeline Integration
-
-```yaml
-# .gitlab-ci.yml example
-discover_infrastructure:
-  stage: discovery
-  script:
-    - ansible-galaxy collection install -r galaxy-requirements.yaml
-    - ansible-playbook discovery.yaml -i production
-  artifacts:
-    reports:
-      junit: discovery-results.xml
-    paths:
-      - discovery-results.json
-    expire_in: 30 days
-```
-
-### API Integration
-
-```python
-# Python integration example
-import subprocess
-import json
-
-def run_discovery(host, collector=None):
-    cmd = ["ansible-playbook", "discovery.yaml", "-i", f"{host},"]
-    if collector:
-        cmd.extend(["-e", f"collector_only={collector}"])
-    
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return {
-        "success": result.returncode == 0,
-        "stdout": result.stdout,
-        "stderr": result.stderr
-    }
-
-# Usage
-result = run_discovery("server1.example.com", "packages")
-```
-
-### Webhook Integration
-
-```bash
-# Webhook trigger script
-#!/bin/bash
-WEBHOOK_URL="https://api.example.com/webhook/discovery"
-HOST="$1"
-COLLECTOR="${2:-all}"
-
-# Run discovery
-ansible-playbook discovery.yaml -i "$HOST," -e "collector_only=$COLLECTOR" > /tmp/discovery.log 2>&1
-
-# Send results
-curl -X POST "$WEBHOOK_URL" \
-  -H "Content-Type: application/json" \
-  -d "{\"host\": \"$HOST\", \"status\": \"$?\", \"log\": \"$(cat /tmp/discovery.log | base64)\"}"
-```
-
-## Best Practices
-
-### Development Workflow
-
-```bash
-# 1. Test syntax
-ansible-playbook discovery.yaml --syntax-check
-
-# 2. Dry run
-ansible-playbook discovery.yaml --check --diff
-
-# 3. Limited scope testing
-ansible-playbook discovery.yaml -l test_hosts -e debug=true
-
-# 4. Single collector validation
-ansible-playbook discovery.yaml -e collector_only=packages
-
-# 5. Production deployment
-ansible-playbook discovery.yaml -i production
-```
-
-### Code Organization
-
-```text
-ansible-discovery/
-├── playbooks/
-│   ├── discovery.yaml          # Main orchestrator
-│   ├── prereqs.yaml           # Variable configuration
-│   └── inventory.example      # Sample inventory
-├── collectors/                # System collectors
-│   ├── packages.yaml
-│   ├── services.yaml
-│   └── ...
-├── java/                      # Application-specific
-│   ├── java.yaml
-│   ├── tomcat.yaml
-│   └── ...
-├── webservers/               # Web server discovery
-│   ├── apache.yaml
-│   └── nginx.yaml
-├── filter_plugins/           # Custom filters
-│   └── file_utils.py
-├── tests/                    # Test infrastructure
-└── docs/                     # Documentation
-```
-
-### Version Control
-
-```bash
-# Git hooks for validation
-#!/bin/bash
-# .git/hooks/pre-commit
-ansible-playbook --syntax-check playbooks/*.yaml
-ansible-lint playbooks/*.yaml
-markdownlint docs/*.md
-```
-
-### Documentation Standards
-
-- Keep README files updated with architecture changes
-- Document all custom variables and their defaults
-- Provide working examples for each collector
-- Include troubleshooting sections
-- Maintain changelog for major updates
-
-## Scaling Considerations
-
-### Large Infrastructure
-
-```ini
-# ansible.cfg for large deployments
-[defaults]
-forks = 100
-timeout = 60
-gathering = smart
-fact_caching_timeout = 7200  # 2 hours
-
-[ssh_connection]
-retries = 3
-ssh_args = -C -o ControlMaster=auto -o ControlPersist=600s
-```
-
-### Resource Management
-
-```yaml
-# Memory optimization
-- name: Clear large variables
-  set_fact:
-    large_variable: null
-  when: processing_complete
-
-# Disk space management
-- name: Clean temporary files
-  file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /tmp/ansible-discovery-*
-    - /var/tmp/discovery-*
-```
-
-### Network Optimization
-
-```yaml
-# Batch operations
-- name: Process hosts in batches
-  include_tasks: batch_discovery.yaml
-  vars:
-    batch_hosts: "{{ groups['all'][batch_start:batch_end] }}"
-  loop: "{{ range(0, groups['all']|length, batch_size) }}"
-  loop_control:
-    loop_var: batch_start
-  vars:
-    batch_end: "{{ [batch_start + batch_size, groups['all']|length] | min }}"
-    batch_size: 10
+# Filter errors
+grep -i "error\|failed\|fatal" /var/log/ansible-discovery.log
 ```
