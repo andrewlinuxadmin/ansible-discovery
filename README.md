@@ -2,12 +2,13 @@
 
 Automated infrastructure discovery for Linux servers using Ansible.
 
-Collects detailed information from servers running **RHEL, CentOS, or
-Oracle Linux 6/7**. The collected data is used to identify which servers
-can be converted to Red Hat Enterprise Linux and upgraded to supported
-versions (8+). It also determines the impossibility or difficulty of
-these migrations, preserving the operation of the applications running
-on these servers.
+Collects detailed information from servers running **RHEL, CentOS,
+Oracle Linux, AlmaLinux, Rocky Linux**, or other RHEL-compatible
+distributions (versions 6, 7, 8, and 9). The collected data is used to
+identify which servers can be converted to Red Hat Enterprise Linux and
+upgraded to supported versions (8+). It also determines the
+impossibility or difficulty of these migrations, preserving the
+operation of the applications running on these servers.
 
 The playbook is **read-only** — it does not alter, install, or remove
 anything on the target servers.
