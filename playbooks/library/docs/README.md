@@ -32,7 +32,7 @@ ansible-discovery project.
 
 **Purpose:** Complete Apache HTTP Server configuration parsing with include support
 
-- **Dependencies:** `apacheconfig` Python library
+- **Dependencies:** None (standalone, based on apacheconfig project)
 - **Compatibility:** Python 2.7+/3.x
 - **Documentation:** [apache_config_parser.md](apache_config_parser.md)
 

@@ -140,28 +140,21 @@ tar czf facts_cache.tar.gz facts_cache/
 Generate a report from collected facts:
 
 ```bash
-# Aggregate jsonfile cache into the expected input format
-cd playbooks/facts_cache
-python3 -c "
-import json, glob, os
-result = []
-for f in glob.glob('*'):
-    with open(f) as fh:
-        data = json.load(fh)
-        result.append({'_id': 'ansible_facts' + os.path.basename(f), 'data': data})
-print(json.dumps(result, indent=2))
-" > ../../export.json
-
-# Generate the report
-cd ../..
+# Read directly from facts_cache directory (default)
 python3 ansible-discovery-report.py
+
+# Or point to a specific directory
+python3 ansible-discovery-report.py --input playbooks/facts_cache
+
+# Or use a single JSON file (array of {_id, data} objects)
+python3 ansible-discovery-report.py --input export.json
 ```
 
-| Argument   | Default                        | Description        |
-|------------|--------------------------------|--------------------|
-| `--config` | `ansible-discovery-report.ini` | INI configuration  |
-| `--input`  | `export.json`                  | Input JSON data    |
-| `--output` | `ansible-discovery-report.html`| Output HTML file   |
+| Argument   | Default                        | Description                       |
+|------------|--------------------------------|-----------------------------------|
+| `--config` | `ansible-discovery-report.ini` | INI configuration                 |
+| `--input`  | `playbooks/facts_cache`        | facts_cache directory or JSON file|
+| `--output` | `ansible-discovery-report.html`| Output HTML file                  |
 
 All text, colors, and labels are configured in the INI file.
 The report includes OS overview, application inventory,

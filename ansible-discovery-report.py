@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 import json
+import os
 import html as html_mod
 import configparser
 import argparse
 from collections import Counter, defaultdict
 
-VERSION = '6'
+VERSION = '7'
 
 # ─── Parse arguments ─────────────────────────────────────────────
-parser = argparse.ArgumentParser(description='Ansible Discovery Report Generator')
+parser = argparse.ArgumentParser(
+    description='Ansible Discovery Report Generator',
+    epilog='Input can be a single JSON file (array or NDJSON) or a facts_cache directory.'
+)
 parser.add_argument('--version', action='version', version=f'%(prog)s {VERSION}')
 parser.add_argument('--config', default='ansible-discovery-report.ini', help='INI configuration file (default: ansible-discovery-report.ini)')
-parser.add_argument('--input', dest='input_file', help='Input JSON file (overrides INI value)')
+parser.add_argument('--input', dest='input_file', help='Input JSON file or facts_cache directory (overrides INI value)')
 parser.add_argument('--output', dest='output_file', help='Output HTML file (overrides INI value)')
 args = parser.parse_args()
 
@@ -42,12 +46,50 @@ SIDEBAR_BG = colors('sidebar_bg')
 SIDEBAR_ACTIVE_BG = colors('sidebar_active_bg')
 SIDEBAR_ACTIVE_BORDER = colors('sidebar_active_border')
 
-with open(INPUT_FILE) as f:
-    raw = f.read().strip()
+
+def load_records(input_path):
+    """Load host records from a JSON file or a facts_cache directory.
+
+    Supports three input formats:
+      1. A directory of per-host JSON files (facts_cache style)
+      2. A single JSON file containing an array of {_id, data} objects
+      3. A single NDJSON file (one JSON object per line)
+
+    When reading a directory, each file is treated as one host.
+    The filename becomes the hostname in the _id field.
+    """
+    if os.path.isdir(input_path):
+        records = []
+        for filename in sorted(os.listdir(input_path)):
+            filepath = os.path.join(input_path, filename)
+            if not os.path.isfile(filepath):
+                continue
+            try:
+                with open(filepath, encoding='utf-8') as fh:
+                    data = json.load(fh)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            if isinstance(data, dict):
+                if 'data' in data and '_id' in data:
+                    records.append(data)
+                else:
+                    records.append({
+                        '_id': 'ansible_facts' + filename,
+                        'data': data
+                    })
+        if not records:
+            raise SystemExit(f'No valid JSON files found in directory: {input_path}')
+        return records
+
+    with open(input_path, encoding='utf-8') as f:
+        raw = f.read().strip()
+
     if raw.startswith('['):
-        records = json.loads(raw)
-    else:
-        records = [json.loads(line) for line in raw.splitlines() if line.strip()]
+        return json.loads(raw)
+    return [json.loads(line) for line in raw.splitlines() if line.strip()]
+
+
+records = load_records(INPUT_FILE)
 
 def clean_id(raw_id):
     if raw_id.startswith('ansible_facts'):
