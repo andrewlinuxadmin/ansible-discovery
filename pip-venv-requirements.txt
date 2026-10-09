@@ -1,4 +1,4 @@
-jmespath
+# Development and linting tools (optional)
 ansible-lint
 flake8
 autopep8
