@@ -5,6 +5,9 @@ Collects information about processes, Java applications, web servers,
 PHP apps, system services, and more. Facts are cached as local JSON
 files for analysis and HTML report generation.
 
+The playbook is **read-only** — it does not alter, install, or remove
+anything on the target servers.
+
 ## Prerequisites
 
 A **RHEL 9** server as the control node. Install the required packages:
@@ -41,23 +44,32 @@ server2.example.com
 10.0.1.50
 ```
 
+If the SSH user differs from the local user, add `ansible_user`:
+
+```ini
+server1.example.com ansible_user=deploy
+```
+
 ### SSH Connection
 
 **Option A — SSH key (recommended):** No extra configuration needed.
+The key from the control node is used automatically.
 
-**Option B — Password:** Add variables to the inventory:
+**Option B — Password:** Add `ansible_ssh_pass` to the inventory.
+If the sudo password differs from the SSH password, also add
+`ansible_become_pass`:
 
 ```ini
-server1.example.com ansible_user=myuser ansible_ssh_pass=mypass
+server1.example.com ansible_user=deploy ansible_ssh_pass=pass123 ansible_become_pass=sudopass
 ```
 
 To set credentials for all hosts at once:
 
 ```ini
 [servers:vars]
-ansible_user=myuser
-ansible_ssh_pass=mypass
-ansible_become_pass=sudo_pass
+ansible_user=deploy
+ansible_ssh_pass=pass123
+ansible_become_pass=sudopass
 ```
 
 ## Running Discovery
@@ -74,6 +86,10 @@ ansible-playbook discovery.yaml -e collector_only=java
 # Debug mode
 ansible-playbook discovery.yaml -e debug=true -e log=true
 ```
+
+> **Note:** Record any servers that fail during execution (connectivity,
+> permission, or availability issues). This list should be sent along
+> with the collected data.
 
 ### Available Collectors
 
@@ -108,6 +124,15 @@ cat facts_cache/server1.example.com | python3 -m json.tool
 
 # Clear cache
 rm -rf facts_cache/*
+```
+
+### Exporting Collected Data
+
+To compress and send the collected facts:
+
+```bash
+cd playbooks
+tar czf facts_cache.tar.gz facts_cache/
 ```
 
 ## HTML Report
@@ -159,9 +184,11 @@ discovery.yaml
 | Module                 | Purpose                      | Dependencies  |
 |------------------------|------------------------------|---------------|
 | `process_facts`        | Process discovery via /proc  | None          |
-| `apache_config_parser` | Apache configuration parsing | `apacheconfig`|
+| `apache_config_parser` | Apache configuration parsing | None          |
 | `nginx_config_parser`  | NGINX configuration parsing  | None          |
 | `php_config_parser`    | PHP multi-distro discovery   | None          |
+
+All modules are standalone with no external Python dependencies.
 
 ### Custom Filters (`playbooks/filter_plugins/file_utils.py`)
 
