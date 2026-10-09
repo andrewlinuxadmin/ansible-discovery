@@ -1,9 +1,13 @@
 # Ansible Discovery
 
 Automated infrastructure discovery for Linux servers using Ansible.
-Collects information about processes, Java applications, web servers,
-PHP apps, system services, and more. Facts are cached as local JSON
-files for analysis and HTML report generation.
+
+Collects detailed information from servers running **RHEL, CentOS, or
+Oracle Linux 6/7**. The collected data is used to identify which servers
+can be converted to Red Hat Enterprise Linux and upgraded to supported
+versions (8+). It also determines the impossibility or difficulty of
+these migrations, preserving the operation of the applications running
+on these servers.
 
 The playbook is **read-only** — it does not alter, install, or remove
 anything on the target servers.
